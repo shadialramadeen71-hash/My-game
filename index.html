@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>سوبر مان vs بات مان</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #0a0a1a; font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; min-height: 100vh; }
+  h1 { color: #fff; text-align: center; font-size: 20px; padding: 8px; text-shadow: 0 0 10px #ff0; }
+  .health-bars { display: flex; justify-content: space-between; padding: 5px 10px; gap: 10px; width: 100%; max-width: 420px; }
+  .bar-wrap { flex: 1; }
+  .bar-label { color: #fff; font-size: 12px; text-align: center; margin-bottom: 3px; }
+  .bar-bg { background: #333; border-radius: 10px; height: 16px; overflow: hidden; border: 1px solid #555; }
+  .bar-fill { height: 100%; border-radius: 10px; transition: width 0.3s; }
+  #superman-bar { background: linear-gradient(90deg, #1565c0, #42a5f5); width: 100%; }
+  #batman-bar { background: linear-gradient(90deg, #b71c1c, #ef5350); width: 100%; }
+  canvas { display: block; width: 100%; max-width: 420px; border: 2px solid #333; }
+  #msg { color: #ffeb3b; font-size: 13px; text-align: center; min-height: 22px; padding: 3px; }
+  .controls { display: flex; justify-content: space-between; width: 100%; max-width: 420px; padding: 6px 10px; gap: 8px; }
+  .player-controls { display: flex; flex-direction: column; gap: 5px; align-items: center; }
+  .player-controls span { color: #aaa; font-size: 11px; }
+  .btn-row { display: flex; gap: 5px; }
+  button { background: #222; color: #fff; border: 1px solid #555; border-radius: 8px; padding: 10px 12px; font-size: 13px; cursor: pointer; touch-action: manipulation; min-width: 44px; min-height: 44px; }
+  button:active { background: #444; }
+  .btn-su { background: #0d2a5c; border-color: #42a5f5; }
+  .btn-bat { background: #3a1a1a; border-color: #ef5350; }
+  #restart-btn { display: none; margin: 5px auto; background: #1b5e20; border-color: #4caf50; padding: 10px 30px; font-size: 15px; }
+</style>
+</head>
+<body>
+<h1>🦸 سوبر مان vs بات مان 🦇</h1>
+<div class="health-bars">
+  <div class="bar-wrap">
+    <div class="bar-label">🦸 سوبر مان</div>
+    <div class="bar-bg"><div class="bar-fill" id="superman-bar"></div></div>
+  </div>
+  <div class="bar-wrap">
+    <div class="bar-label">بات مان 🦇</div>
+    <div class="bar-bg"><div class="bar-fill" id="batman-bar"></div></div>
+  </div>
+</div>
+<canvas id="canvas" width="420" height="270"></canvas>
+<div id="msg">اضغط للهجوم! 👊</div>
+<div class="controls">
+  <div class="player-controls">
+    <span>🦸 أنت</span>
+    <div class="btn-row">
+      <button onclick="suAttack('punch')">👊</button>
+      <button onclick="suAttack('jump')">⬆️</button>
+    </div>
+    <button class="btn-su" onclick="suAttack('laser')">🔴 ليزر</button>
+  </div>
+  <div class="player-controls">
+    <span>🦇 أنت</span>
+    <div class="btn-row">
+      <button onclick="batAttack('punch')">👊</button>
+      <button onclick="batAttack('jump')">⬆️</button>
+    </div>
+    <button class="btn-bat" onclick="batAttack('batarang')">🦇 باتارانج</button>
+  </div>
+</div>
+<button id="restart-btn" onclick="restartGame()">🔄 العب مجدداً</button>
+<script>
+const canvas=document.getElementById('canvas'),ctx=canvas.getContext('2d'),W=420,H=270,ground=H-50;
+let gameOver=false;
+const particles=[];
+const su={x:60,y:0,w:50,h:75,hp:100,vy:0,jumping:false,flash:0,proj:null};
+const bat={x:310,y:0,w:50,h:75,hp:100,vy:0,jumping:false,flash:0,proj:null};
+su.y=ground-su.h; bat.y=ground-bat.h;
+
+function drawBG(){
+  const sky=ctx.createLinearGradient(0,0,0,H);
+  sky.addColorStop(0,'#060d2e');sky.addColorStop(1,'#1a1a2e');
+  ctx.fillStyle=sky;ctx.fillRect(0,0,W,H);
+  ctx.fillStyle='#fffde7';ctx.beginPath();ctx.arc(360,38,20,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#060d2e';ctx.beginPath();ctx.arc(370,33,16,0,Math.PI*2);ctx.fill();
+  [[20,15],[70,10],[140,25],[210,8],[280,20],[390,12]].forEach(([x,y])=>{ctx.fillStyle='#fff';ctx.fillRect(x,y,2,2);});
+  [[10,80,45],[80,60,50],[160,45,55],[240,70,50],[320,50,50],[385,65,35]].forEach(([x,y,w])=>{
+    ctx.fillStyle='#0d0d22';ctx.fillRect(x,y,w,ground-y);
+    ctx.fillStyle='#ffeb3b33';
+    for(let wy=y+10;wy<ground-10;wy+=16)for(let wx=x+5;wx<x+w-5;wx+=12)ctx.fillRect(wx,wy,6,8);
+  });
+  ctx.fillStyle='#3e2723';ctx.fillRect(0,ground,W,H-ground);
+  ctx.fillStyle='#5d4037';ctx.fillRect(0,ground,W,4);
+}
+
+function drawChar(f,isSu){
+  ctx.save();
+  if(f.flash>0){ctx.globalAlpha=0.4+Math.sin(f.flash)*0.6;f.flash--;}
+  const cx=f.x+f.w/2,cy=f.y,dx=f.flash>0?(Math.random()*6-3):0;
+  if(isSu){
+    ctx.fillStyle='#c62828';ctx.beginPath();ctx.moveTo(cx+dx,cy+15);ctx.lineTo(cx-20+dx,cy+65);ctx.lineTo(cx+dx,cy+55);ctx.fill();
+    ctx.fillStyle='#1565c0';ctx.fillRect(cx-14+dx,cy+12,28,38);
+    ctx.fillStyle='#ffeb3b';ctx.font='bold 14px Arial';ctx.textAlign='center';ctx.fillText('S',cx+dx,cy+36);
+    ctx.fillStyle='#ffcc80';ctx.beginPath();ctx.arc(cx+dx,cy+5,15,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#f44336';ctx.fillRect(cx-8+dx,cy,5,4);ctx.fillRect(cx+3+dx,cy,5,4);
+    ctx.fillStyle='#1565c0';ctx.fillRect(cx-12+dx,cy+50,10,22);ctx.fillRect(cx+2+dx,cy+50,10,22);
+    ctx.fillStyle='#c62828';ctx.fillRect(cx-13+dx,cy+65,12,9);ctx.fillRect(cx+1+dx,cy+65,12,9);
+    ctx.fillStyle='#1565c0';ctx.fillRect(cx-22+dx,cy+14,9,26);ctx.fillRect(cx+13+dx,cy+14,9,26);
+  } else {
+    ctx.fillStyle='#222';ctx.beginPath();ctx.moveTo(cx+dx,cy+15);ctx.lineTo(cx+20+dx,cy+65);ctx.lineTo(cx+dx,cy+55);ctx.fill();
+    ctx.fillStyle='#111';ctx.fillRect(cx-14+dx,cy+12,28,38);
+    ctx.fillStyle='#ffeb3b';ctx.font='12px Arial';ctx.textAlign='center';ctx.fillText('🦇',cx+dx,cy+36);
+    ctx.fillStyle='#1a1a1a';ctx.beginPath();ctx.arc(cx+dx,cy+5,15,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#111';
+    ctx.beginPath();ctx.moveTo(cx-9+dx,cy-8);ctx.lineTo(cx-5+dx,cy-20);ctx.lineTo(cx-1+dx,cy-8);ctx.fill();
+    ctx.beginPath();ctx.moveTo(cx+1+dx,cy-8);ctx.lineTo(cx+5+dx,cy-20);ctx.lineTo(cx+9+dx,cy-8);ctx.fill();
+    ctx.fillStyle='#fff';ctx.fillRect(cx-8+dx,cy-2,5,5);ctx.fillRect(cx+3+dx,cy-2,5,5);
+    ctx.fillStyle='#f00';ctx.fillRect(cx-6+dx,cy,3,3);ctx.fillRect(cx+5+dx,cy,3,3);
+    ctx.fillStyle='#111';ctx.fillRect(cx-12+dx,cy+50,10,22);ctx.fillRect(cx+2+dx,cy+50,10,22);
+    ctx.fillStyle='#333';ctx.fillRect(cx-13+dx,cy+65,12,9);ctx.fillRect(cx+1+dx,cy+65,12,9);
+    ctx.fillStyle='#111';ctx.fillRect(cx-22+dx,cy+14,9,26);ctx.fillRect(cx+13+dx,cy+14,9,26);
+  }
+  ctx.restore();
+}
+
+function drawParticles(){
+  for(let i=particles.length-1;i>=0;i--){
+    const p=particles[i];
+    ctx.globalAlpha=p.life/p.max;ctx.fillStyle=p.c;
+    ctx.beginPath();ctx.arc(p.x,p.y,p.r,0,Math.PI*2);ctx.fill();
+    p.x+=p.vx;p.y+=p.vy;p.vy+=0.3;p.life--;
+    if(p.life<=0)particles.splice(i,1);
+  }
+  ctx.globalAlpha=1;
+}
+
+function boom(x,y,c){for(let i=0;i<12;i++)particles.push({x,y,vx:(Math.random()-.5)*6,vy:(Math.random()-.5)*6-2,r:Math.random()*5+2,c,life:25,max:25});}
+
+function dmg(target,attacker,amount,color){
+  target.hp=Math.max(0,target.hp-amount);target.flash=12;boom(target.x+target.w/2,target.y+30,color);
+  document.getElementById('superman-bar').style.width=su.hp+'%';
+  document.getElementById('batman-bar').style.width=bat.hp+'%';
+  document.getElementById('msg').textContent=attacker==='su'?'🦸 سوبر مان يضرب! 💥':'🦇 بات مان يضرب! 💥';
+  if(target.hp<=0)end(attacker);
+}
+
+function end(w){gameOver=true;document.getElementById('msg').textContent=w==='su'?'🏆 سوبر مان فاز! 🎉':'🏆 بات مان فاز! 🎉';document.getElementById('restart-btn').style.display='block';}
+
+function suAttack(t){
+  if(gameOver)return;
+  if(t==='punch'){const d=Math.abs((su.x+su.w/2)-(bat.x+bat.w/2));if(d<130)dmg(bat,'su',12,'#42a5f5');else document.getElementById('msg').textContent='🦸 بعيد! اقترب!';}
+  else if(t==='jump'&&!su.jumping){su.jumping=true;su.vy=-14;document.getElementById('msg').textContent='🦸 يطير! ✈️';}
+  else if(t==='laser'&&!su.proj){su.proj={x:su.x+su.w,y:su.y+20,vx:9,dmg:20};document.getElementById('msg').textContent='👁️ ليزر العين! 🔴';}
+  if(!gameOver)setTimeout(batAI,700+Math.random()*700);
+}
+
+function batAttack(t){
+  if(gameOver)return;
+  if(t==='punch'){const d=Math.abs((bat.x+bat.w/2)-(su.x+su.w/2));if(d<130)dmg(su,'bat',10,'#9c27b0');else document.getElementById('msg').textContent='🦇 بعيد! اقترب!';}
+  else if(t==='jump'&&!bat.jumping){bat.jumping=true;bat.vy=-14;document.getElementById('msg').textContent='🦇 يقفز!';}
+  else if(t==='batarang'&&!bat.proj){bat.proj={x:bat.x,y:bat.y+20,vx:-8,dmg:18};document.getElementById('msg').textContent='🦇 باتارانج! 🌀';}
+  if(!gameOver)setTimeout(suAI,700+Math.random()*700);
+}
+
+function batAI(){if(gameOver)return;const r=Math.random();if(r<.45)batAttack('punch');else if(r<.8)batAttack('batarang');else batAttack('jump');}
+function suAI(){if(gameOver)return;const r=Math.random();if(r<.45)suAttack('punch');else if(r<.8)suAttack('laser');else suAttack('jump');}
+
+function restartGame(){
+  su.hp=100;bat.hp=100;su.y=ground-su.h;bat.y=ground-bat.h;
+  su.proj=null;bat.proj=null;su.jumping=false;bat.jumping=false;su.vy=0;bat.vy=0;
+  particles.length=0;gameOver=false;
+  document.getElementById('superman-bar').style.width='100%';
+  document.getElementById('batman-bar').style.width='100%';
+  document.getElementById('msg').textContent='اضغط للهجوم! 👊';
+  document.getElementById('restart-btn').style.display='none';
+}
+
+function loop(){
+  ctx.clearRect(0,0,W,H);drawBG();
+  [su,bat].forEach(f=>{if(f.jumping){f.vy+=0.8;f.y+=f.vy;if(f.y>=ground-f.h){f.y=ground-f.h;f.jumping=false;f.vy=0;}}});
+  if(su.proj){su.proj.x+=su.proj.vx;if(su.proj.x>bat.x&&su.proj.x<bat.x+bat.w&&su.proj.y>bat.y&&su.proj.y<bat.y+bat.h+80){dmg(bat,'su',su.proj.dmg,'#f44336');su.proj=null;}else if(su.proj&&su.proj.x>W)su.proj=null;}
+  if(bat.proj){bat.proj.x+=bat.proj.vx;if(bat.proj.x>su.x&&bat.proj.x<su.x+su.w&&bat.proj.y>su.y&&bat.proj.y<su.y+su.h+80){dmg(su,'bat',bat.proj.dmg,'#9c27b0');bat.proj=null;}else if(bat.proj&&bat.proj.x<0)bat.proj=null;}
+  drawParticles();drawChar(su,true);drawChar(bat,false);
+  if(su.proj){ctx.font='18px Arial';ctx.textAlign='center';ctx.fillText('🔴',su.proj.x,su.proj.y);}
+  if(bat.proj){ctx.font='18px Arial';ctx.textAlign='center';ctx.fillText('🦇',bat.proj.x,bat.proj.y);}
+  if(gameOver){ctx.fillStyle='rgba(0,0,0,0.55)';ctx.fillRect(0,0,W,H);ctx.fillStyle='#ffeb3b';ctx.font='bold 26px Arial';ctx.textAlign='center';ctx.fillText('🏆 انتهت المعركة! 🏆',W/2,H/2);}
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
+</body>
+  </html>
