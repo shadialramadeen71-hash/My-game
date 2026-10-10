@@ -10,8 +10,9 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
 from scipy.signal import butter, sosfilt
 
 import art
+import rig
 from art import W, H, NAVY, GOLD, WOLF, WHITE, font, project
-from script import EPISODES, SERIES
+from script import EPISODES, SERIES, CAST
 
 FPS = 30
 SR = 48000
@@ -23,7 +24,15 @@ SPEAKER_STYLE = {
     "MARCUS": ("MARCUS REED  #7", GOLD, (20, 20, 20)),
     "COACH": ("COACH RAY DAWSON", (110, 180, 255), (10, 20, 40)),
     "ANNOUNCER": ("●  LIVE  PLAY-BY-PLAY", (220, 30, 45), WHITE),
+    "MOM": ("MOM  ·  DENISE REED", (255, 120, 180), (30, 10, 20)),
+    "KAYLA": ("KAYLA  ·  LITTLE SISTER", (190, 130, 255), (20, 10, 30)),
+    "GRANDPA": ("GRANDPA EARL", (120, 220, 150), (10, 30, 15)),
+    "LINDA": ("LINDA DAWSON  ·  COACH'S WIFE", (90, 210, 210), (5, 30, 30)),
 }
+WALK_SPEED = 820
+STRIDE = 340
+GROUND_Y = 1795
+MARKS = {0: [], 1: [540], 2: [310, 770], 3: [215, 540, 865], 4: [165, 415, 665, 915], 5: [130, 345, 560, 775, 990]}
 
 
 def smooth(x):
@@ -112,27 +121,104 @@ def sfx_roar(d=4.0, seed=1):
 
 # ---------------------------------------------------------------- timeline
 
+def _marks(cast):
+    return {w: x for w, x in zip(cast, MARKS[len(cast)])}
+
+
 def build_timeline(ep):
-    """Lay out lines on the episode clock and resolve play events."""
-    items, t = [], INTRO
-    prev_scene = None
-    scene = None
+    """Lay out lines on the episode clock. Lines are grouped into location segments; characters walk
+    in at the start of a segment, re-position when the cast changes, and walk out at its end."""
+    items, segs, t = [], [], INTRO
+    scene, cast = None, None
+
+    def close(seg, t):
+        if seg["cast"]:
+            seg["exit"] = t + 0.1
+            m = _marks(seg["cast"])
+            n = len(seg["cast"])
+            t = seg["exit"] + (W + 320 - min(m.values(), default=W)) / WALK_SPEED + 0.12 * (n - 1) + 0.05
+        else:
+            t += 0.25
+        seg["end"] = t
+        return t
+
     for i, (spk, text, opt) in enumerate(ep["lines"]):
         base = f"{BUILD}/tts/ep{ep['num']}_{i:02d}"
         audio = load_audio(base + ".mp3")
         words = json.load(open(base + ".json"))
-        scene = opt.get("scene", scene)
-        if prev_scene is not None and scene != prev_scene and not opt.get("cont"):
-            t += 0.45
+        new_scene = opt.get("scene", scene)
+        is_new = scene is None or (new_scene != scene and not opt.get("cont"))
+        if is_new:
+            new_cast = opt.get("cast") or CAST.get(new_scene, [])
+            if segs:
+                t = close(segs[-1], t)
+            seg = dict(scene=new_scene, start=t, cast=new_cast, changes=[(t, new_cast)], casts={*new_cast})
+            segs.append(seg)
+            t += 1.05 if new_cast else 0.35
+        elif opt.get("cast") and opt["cast"] != cast:
+            new_cast = opt["cast"]
+            seg["changes"].append((t, new_cast))
+            seg["casts"] |= set(new_cast)
+            seg["cast"] = new_cast
+            t += 1.0
+        else:
+            new_cast = cast
+        scene, cast = new_scene, new_cast
         dur = len(audio) / SR
-        items.append(dict(i=i, spk=spk, text=text, opt=opt, scene=scene, t0=t, t1=t + dur,
+        items.append(dict(i=i, spk=spk, text=text, opt=opt, scene=scene, seg=len(segs) - 1, t0=t, t1=t + dur,
                           audio=audio, words=words))
         t += dur + 0.32
         if opt.get("fx") in ("intercept", "touchdown"):
             t += 1.6
-        prev_scene = scene
+    t = close(segs[-1], t)
+    for s in segs:
+        s["moves"] = plan_moves(s)
     total = t + OUTRO
-    return items, total
+    return items, segs, total
+
+
+def plan_moves(seg):
+    """Per character: list of (start_time, x_from, x_to)."""
+    moves = {w: [] for w in seg["casts"]}
+    cur = {}
+    for ci, (tc, cast) in enumerate(seg["changes"]):
+        m = _marks(cast)
+        entering = sorted([w for w in cast if w not in cur], key=lambda w: -m[w])
+        for k, w in enumerate(entering):
+            x0 = -320 - k * 230
+            moves[w].append((tc + 0.05 + k * 0.1, x0, m[w]))
+        for w in cast:
+            if w in cur and cur[w] != m[w]:
+                moves[w].append((tc + 0.05, cur[w], m[w]))
+        for w in list(cur):
+            if w not in cast:
+                moves[w].append((tc + 0.05, cur[w], W + 320))
+                del cur[w]
+        cur.update(m)
+    if seg.get("exit") is not None:
+        for k, w in enumerate(sorted(cur, key=lambda w: -cur[w])):
+            moves[w].append((seg["exit"] + k * 0.12, cur[w], W + 320))
+    return moves
+
+
+def actor_state(moves, t):
+    """-> (x, moving, phase) or None before the character first appears."""
+    if not moves:
+        return -999, False, 0.0
+    x, dist, moving = moves[0][1], 0.0, False
+    for (s, a, b) in moves:
+        if t < s:
+            break
+        dur = abs(b - a) / WALK_SPEED
+        if t < s + dur:
+            f = (t - s) / dur
+            x = a + (b - a) * f
+            dist += abs(b - a) * f
+            moving = True
+            break
+        x = b
+        dist += abs(b - a)
+    return x, moving, dist / STRIDE
 
 
 def caption_words(item):
@@ -467,25 +553,6 @@ def draw_board(img, state, p, t):
 
 # ---------------------------------------------------------------- frame parts
 
-class Cast:
-    LEVELS = 8
-
-    def __init__(self):
-        self.img = {}
-        for who in ("MARCUS", "COACH"):
-            base = art.character_set(who)
-            for key, im in base.items():
-                for lv in range(self.LEVELS):
-                    f = lv / (self.LEVELS - 1)  # 0 inactive, 1 active
-                    scale = 0.9 + 0.12 * f
-                    bright = 0.5 + 0.5 * f
-                    im2 = im.resize((int(600 * scale), int(900 * scale)), Image.LANCZOS)
-                    rgb = ImageEnhance.Brightness(im2.convert("RGB")).enhance(bright)
-                    sat = ImageEnhance.Color(rgb).enhance(0.6 + 0.4 * f)
-                    sat.putalpha(im2.getchannel("A"))
-                    self.img[(who, key, lv)] = sat
-
-
 def caption_image(chunk, active, spk):
     fnt = font("Inter-Black.otf", 74)
     words = [c["w"] for c in chunk]
@@ -560,7 +627,7 @@ def hud(ep, scoreboard, t, total):
 def render_episode(num):
     random.seed(num)
     ep = next(e for e in EPISODES if e["num"] == num)
-    items, total = build_timeline(ep)
+    items, segs, total = build_timeline(ep)
     nfr = int(total * FPS)
     os.makedirs(OUT, exist_ok=True)
 
@@ -583,12 +650,20 @@ def render_episode(num):
     put(sfx, sfx_boom(), 0.05, 0.9)
     put(sfx, sfx_whoosh(), 0.0, 0.6)
     put(sfx, sfx_whoosh(), total - OUTRO - 0.3, 0.5)
-    stadium_scenes = ("sideline", "play", "broadcast", "bench", "celebrate")
-    prev = None
+    stadium_scenes = ("sideline", "play", "broadcast", "bench", "celebrate", "stands")
+    for s in segs[1:]:
+        put(sfx, sfx_whoosh(0.55), s["start"] - 0.35, 0.45)
+    step = lp(RNG.standard_normal(int(SR * 0.07)), 500) * np.exp(-np.arange(int(SR * 0.07)) / SR * 60)
+    step = (step / np.abs(step).max()).astype(np.float32)
+    for s in segs:
+        for w, mv in s["moves"].items():
+            for (st0, a, b) in mv:
+                n_steps = int(abs(b - a) / (STRIDE / 2))
+                for k in range(n_steps):
+                    ts = st0 + k * (STRIDE / 2) / WALK_SPEED
+                    if s["start"] <= ts <= s["end"]:
+                        put(sfx, step, ts, 0.12 * rig.SPECS[w]["scale"])
     for it in items:
-        if it["scene"] != prev and prev is not None and not it["opt"].get("cont"):
-            put(sfx, sfx_whoosh(0.55), it["t0"] - 0.5, 0.45)
-        prev = it["scene"]
         fx = it["opt"].get("fx")
         if fx == "boom":
             put(sfx, sfx_boom(), it["t0"] + 0.2, 0.7)
@@ -606,8 +681,10 @@ def render_episode(num):
     base_crowd = crowd(N, 0.11, num)
     mask = np.zeros(N, np.float32)
     for it in items:
-        if it["scene"] in stadium_scenes:
-            mask[int((it["t0"] - 0.6) * SR): int((it["t1"] + 0.6) * SR)] = 1
+        pass
+    for s in segs:
+        if s["scene"] in stadium_scenes:
+            mask[int(s["start"] * SR): int(s["end"] * SR)] = 1.6 if s["scene"] in ("stands", "celebrate") else 1
     mask = lp(mask, 1.5, 1).astype(np.float32)
     amb += base_crowd * mask
 
@@ -653,7 +730,9 @@ def render_episode(num):
         return float(np.sqrt((a ** 2).mean())) if len(a) else 0.0
 
     # ------------------------------------------------ visuals
-    cast = Cast()
+    actors = {w: rig.Actor(w) for s in segs for w in s['casts']}
+    fg_stands, fg_press = art.fg_stands(), art.fg_press()
+    td_catch = next((p['catch'] for p in plays.values() if p['kind'] == 'touchdown'), None)
     bgs = {
         "locker": art.bg_locker(),
         "film": art.bg_film(),
@@ -664,6 +743,8 @@ def render_episode(num):
         "practice_sunset": art.bg_practice(True),
         "tunnel": art.bg_tunnel(),
         "press": art.bg_press(),
+        "home": art.bg_home(),
+        "stands": art.bg_stands(),
         "celebrate": art.bg_stadium(blur=6),
         "broadcast": art.bg_stadium(),
     }
@@ -701,8 +782,9 @@ def render_episode(num):
                     sb = (val[1], val[2], sb[2], val[3] or sb[3])
                 else:
                     sb = val
-        if sb and num == 5 and 6 in plays and sb[2] == "4TH":
-            pl = plays[6]
+        tdp = next((p for p in plays.values() if p["kind"] == "touchdown"), None)
+        if sb and tdp and sb[2] == "4TH":
+            pl = tdp
             if t > pl["snap"]:
                 left = max(0, 8 * (1 - (t - pl["snap"]) / (pl["catch"] - pl["snap"])))
                 sb = (sb[0], sb[1], sb[2], f"0:{int(math.ceil(left)):02d}")
@@ -726,21 +808,28 @@ def render_episode(num):
         "-shortest", f"{OUT}/FourthQuarter_Ep{num}_{ep['title'].title().replace(' ', '')}.mp4"],
         stdin=subprocess.PIPE)
 
-    def item_at(t):
+    def seg_at(t):
+        cur = segs[0]
+        for s in segs:
+            if s["start"] <= t:
+                cur = s
+        return cur
+
+    def item_at(t, si):
         cur = None
         for it in items:
-            if it["t0"] - 0.45 <= t:
+            if it["seg"] == si and (cur is None or it["t0"] - 0.5 <= t):
                 cur = it
         return cur
 
-    def active_speaker(t):
+    def active_speaker(t, si):
         cur = None
         for it in items:
-            if it["t0"] - 0.15 <= t:
+            if it["seg"] == si and it["t0"] - 0.15 <= t:
                 cur = it
         return cur
 
-    char_lv = {"MARCUS": 0.0, "COACH": 0.0}
+    blink_off = {w: k * 0.77 for k, w in enumerate(rig.SPECS)}
     for fi in range(nfr):
         t = fi / FPS
         if preview and fi not in frames_wanted and not any(0 < f - fi < 12 for f in frames_wanted):
@@ -751,16 +840,13 @@ def render_episode(num):
         elif t >= total - OUTRO:
             frame = outro_card(ep, t - (total - OUTRO), intro_bg)
         else:
-            it = item_at(t)
-            scene = it["scene"]
-            sp = active_speaker(t)
+            seg = seg_at(t)
+            si = segs.index(seg)
+            it = item_at(t, si)
+            scene = seg["scene"]
+            sp = active_speaker(t, si)
             idx = items.index(it)
-            # scene start for camera motion
-            s0 = it["t0"]
-            for j in range(idx, -1, -1):
-                if items[j]["scene"] != scene:
-                    break
-                s0 = items[j]["t0"]
+            s0 = seg["start"]
             st = t - s0
             if scene == "play":
                 frame = Image.new("RGB", (W, H))
@@ -804,36 +890,54 @@ def render_episode(num):
                         continue
                     r = rnd.uniform(3, 9)
                     d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 240, rnd.randint(90, 230)))
-            # characters
-            if scene not in ("play", "broadcast"):
-                who_active = sp["spk"] if sp else None
-                for who in ("MARCUS", "COACH"):
-                    target = 1.0 if who_active == who else 0.0
-                    char_lv[who] += (target - char_lv[who]) * 0.28
-                order = sorted(("MARCUS", "COACH"), key=lambda w: char_lv[w])
-                for who in order:
-                    lvq = int(round(char_lv[who] * (Cast.LEVELS - 1)))
+            # characters (full bodies, walking between places)
+            if seg["casts"]:
+                d = ImageDraw.Draw(frame, "RGBA")
+                speaking = sp is not None and sp["t0"] <= t <= sp["t1"] + 0.05
+                in_cast = sp is not None and sp["spk"] in seg["casts"]
+                states = {}
+                for w in seg["casts"]:
+                    x, moving, phase = actor_state(seg["moves"][w], t)
+                    if -300 < x < W + 300:
+                        states[w] = (x, moving, phase)
+                for w, (x, moving, phase) in states.items():
+                    sc = rig.SPECS[w]["scale"]
+                    d.ellipse((x - 120 * sc, GROUND_Y - 16, x + 120 * sc, GROUND_Y + 14), fill=(0, 0, 0, 80))
+                order = sorted(states, key=lambda w: (-rig.SPECS[w]["scale"], sp is not None and sp["spk"] == w))
+                for k, w in enumerate(order):
+                    x, moving, phase = states[w]
+                    act = actors[w]
+                    is_spk = sp is not None and sp["spk"] == w and speaking
+                    lift = 0
+                    if moving:
+                        pose = ("walk", int(phase * rig.Actor.WALK_FRAMES) % rig.Actor.WALK_FRAMES)
+                    elif scene == "celebrate":
+                        fast = 7 if w == "GRANDPA" else 5
+                        pose = (("cheer", "point")[int(t * 3) % 2] if w == "GRANDPA" else "cheer", int(t * 4 + k) % 2)
+                        lift = int(45 * abs(math.sin(t * fast + k * 1.3)))
+                    elif is_spk and sp["opt"].get("pose") == "point":
+                        pose = ("point", int(t * 3) % 2)
+                        lift = int(12 * abs(math.sin(t * 6)))
+                    elif is_spk:
+                        g = (math.sin((t - sp["t0"]) * 3.4) + 1) / 2
+                        pose = ("talk", int(round(g * (rig.Actor.TALK_FRAMES - 1))))
+                    else:
+                        pose = ("idle", 0)
                     m = 0
-                    if sp and sp["spk"] == who and sp["t0"] <= t <= sp["t1"]:
+                    if is_spk:
                         lv = level(sp, t)
                         m = 2 if lv > 0.09 else (1 if lv > 0.03 else 0)
-                    bl = any(bt <= t < bt + 0.13 for bt in blink_times) if who == "MARCUS" else \
-                        any(bt + 1.1 <= t < bt + 1.23 for bt in blink_times)
-                    im = cast.img[(who, (m, bl), lvq)]
-                    enter = smooth((t - INTRO) / 0.6)
-                    cx = 300 if who == "MARCUS" else 790
-                    cx += (-1 if who == "MARCUS" else 1) * (1 - enter) * 500
-                    bob = 5 * math.sin(t * 2.1 + (0 if who == "MARCUS" else 1.7))
-                    if scene == "celebrate" and who == "MARCUS":
-                        bob += -22 * abs(math.sin(t * 5))
-                    x = int(cx - im.width / 2)
-                    y = int(1745 - im.height + bob)
-                    frame.paste(im, (x, y), im)
-                # bottom fade
+                    bl = any(bt + blink_off[w] <= t < bt + blink_off[w] + 0.13 for bt in blink_times)
+                    active = (not in_cast) or sp["spk"] == w or scene == "celebrate"
+                    act.compose(frame, x, GROUND_Y, pose, m, bl, active=active, lift=lift)
+                if scene == "stands":
+                    frame.alpha_composite(fg_stands, (0, H - fg_stands.height))
+                elif scene == "press":
+                    frame.alpha_composite(fg_press, (0, H - fg_press.height))
                 frame.alpha_composite(BOTTOM_FADE, (0, H - BOTTOM_FADE.height))
             # confetti
             if scene == "celebrate" or (scene == "play" and plays[idx]["kind"] == "touchdown" and t > plays[idx]["catch"]):
-                t_c = t - (plays[6]["catch"] if num == 5 and 6 in plays else s0)
+                t_c = t - (td_catch if scene == "play" and td_catch else s0)
                 d = ImageDraw.Draw(frame, "RGBA")
                 for (x0, y0, v, ph, col) in confetti:
                     y = y0 + v * t_c * 1.4
@@ -906,10 +1010,9 @@ def render_episode(num):
                 frame = frame.transform(frame.size, Image.AFFINE,
                                         (1, 0, random.uniform(-shake, shake), 0, 1, random.uniform(-shake, shake)))
             # scene cut flash
-            for it2 in items:
-                prev_scene = items[items.index(it2) - 1]["scene"] if items.index(it2) else None
-                if prev_scene and prev_scene != it2["scene"] and not it2["opt"].get("cont"):
-                    dt = t - (it2["t0"] - 0.45)
+            for s2 in segs[1:]:
+                if True:
+                    dt = t - s2["start"]
                     if 0 <= dt < 0.3:
                         a = int(255 * (1 - dt / 0.3) * 0.85)
                         frame.alpha_composite(Image.new("RGBA", (W, H), (255, 255, 255, a)))
@@ -928,7 +1031,7 @@ def render_episode(num):
             continue
         ff.stdin.write(frame.tobytes())
     if preview:
-        print("timeline", [(it['spk'], round(it['t0'], 2), it['scene']) for it in items], total)
+        print("segments", [(s['scene'], round(s['start'], 1), round(s['end'], 1)) for s in segs], round(total, 1))
         return num, total
     ff.stdin.close()
     ff.wait()
@@ -949,6 +1052,8 @@ LOCATIONS = {
     "bench": "STALLIONS TEAM BENCH",
     "celebrate": "FINAL WHISTLE",
     "press": "POST-GAME PRESS CONFERENCE",
+    "home": "THE REED FAMILY HOUSE",
+    "stands": "SECTION 107  ·  THE REED FAMILY",
 }
 LOC_CACHE = {}
 

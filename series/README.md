@@ -1,18 +1,20 @@
 # FOURTH QUARTER — مسلسل قصير عن NFL (5 حلقات)
 
-مسلسل باللغة الإنجليزية بصيغة فيديو شورت عمودي (1080×1920، 30fps)، فيه حوار صوتي بين الطرفين
-(لاعب الوسط المبتدئ **Marcus Reed #7** والمدرب **Coach Ray Dawson**) بالإضافة إلى معلّق المباراة،
-مع ترجمة نصية متزامنة كلمة بكلمة، وموسيقى ومؤثرات صوتية (جمهور، صافرة، ضربات).
+مسلسل باللغة الإنجليزية بصيغة فيديو شورت عمودي (1080×1920، 30fps). الشخصيات بأجسام كاملة تمشي من مكان لمكان،
+مع حوار صوتي بين الأطراف وترجمة متزامنة كلمة بكلمة، وموسيقى ومؤثرات (جمهور، صافرة، خطوات، ومضات كاميرات).
+
+**الشخصيات:** Marcus Reed #7 (لاعب الوسط المبتدئ)، Coach Ray Dawson، وعائلة ماركوس: الأم Denise، الأخت الصغيرة Kayla،
+الجد Grandpa Earl، وزوجة المدرب Linda — مع مشاهد كوميدية للعائلة. ولكل شخصية صوت مختلف.
 
 A 5-episode English-language vertical short series about an NFL rookie quarterback.
 
 | # | Episode | Length | Locations | File |
 |---|---------|--------|-----------|------|
-| 1 | The Call | 58s | Coach's office → Locker room → Practice field (sunset) | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
-| 2 | Film Room | 53s | Film room → Practice field (day) → Stadium tunnel | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
-| 3 | Pick Six | 54s | Live play → Sideline → Team bench | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
-| 4 | The Scar | 49s | Team bench → Sideline → Live broadcast | `episodes/FourthQuarter_Ep4_TheScar.mp4` |
-| 5 | Fourth and Goal | 57s | Broadcast → Sideline → Live play → Celebration → Press conference | `episodes/FourthQuarter_Ep5_FourthAndGoal.mp4` |
+| 1 | The Call | 70s | Coach's office → Reed family house | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
+| 2 | Film Room | 79s | Film room → Practice field (Linda visits) → Stadium tunnel | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
+| 3 | Pick Six | 68s | Live play → Family in the stands → Sideline | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
+| 4 | The Scar | 64s | Team bench → Family in the stands → Live broadcast | `episodes/FourthQuarter_Ep4_TheScar.mp4` |
+| 5 | Fourth and Goal | 86s | Broadcast → Sideline → Stands → Live play → Celebration → Press conference | `episodes/FourthQuarter_Ep5_FourthAndGoal.mp4` |
 
 **Story:** the starter tears his ACL and rookie Marcus Reed must start on prime time against the
 Wolves. Coach Dawson teaches him to read safety #24 Darius King, Marcus throws a pick six, learns

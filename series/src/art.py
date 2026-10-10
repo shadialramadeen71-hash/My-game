@@ -587,14 +587,6 @@ def bg_press(seed=27):
             else:
                 d.ellipse((xx - 45, y - 45, xx + 45, y + 45), fill=NAVY)
                 d.text((xx, y), "S", font=fB, fill=GOLD, anchor="mm")
-    # table with microphones
-    d.rectangle((0, 1560, BW, BH), fill=(16, 22, 44))
-    d.rectangle((0, 1560, BW, 1580), fill=GOLD)
-    for i, x in enumerate(range(200, 1100, 90)):
-        h = 140 + (i % 3) * 40
-        d.line([(x, 1560), (x + (i % 2) * 20 - 10, 1560 - h)], fill=(30, 30, 30), width=8)
-        d.rounded_rectangle((x - 22, 1560 - h - 40, x + 22, 1560 - h + 10), 16,
-                            fill=[(200, 30, 40), (30, 30, 30), (30, 80, 200), (240, 240, 240)][i % 4])
     add_light(img, glow((1240, 1000), (255, 255, 255), 2.0, 0.25), (0, 300))
     return vignette(img, 0.5)
 
@@ -626,3 +618,105 @@ def bg_bench(seed=29):
 def ImageEnhance_brightness(img, f):
     from PIL import ImageEnhance
     return ImageEnhance.Brightness(img).enhance(f)
+
+
+def bg_home(seed=31):
+    """Reed family living room."""
+    BW, BH = 1240, 2100
+    img = grad(BW, BH, (214, 180, 140), (170, 130, 95))
+    d = ImageDraw.Draw(img)
+    # wallpaper stripes
+    for x in range(0, BW, 80):
+        d.rectangle((x, 0, x + 36, 1300), fill=(205, 170, 130))
+    # window with evening sky
+    wx0, wy0, wx1, wy1 = 700, 300, 1120, 820
+    img.paste(grad(wx1 - wx0, wy1 - wy0, (40, 50, 110), (240, 140, 90)), (wx0, wy0))
+    d = ImageDraw.Draw(img)
+    d.rectangle((wx0 - 14, wy0 - 14, wx1 + 14, wy1 + 14), outline=(250, 245, 235), width=18)
+    d.line([((wx0 + wx1) / 2, wy0), ((wx0 + wx1) / 2, wy1)], fill=(250, 245, 235), width=12)
+    d.rectangle((wx0 - 60, wy0 - 40, wx0 + 40, wy1 + 60), fill=(160, 40, 50))  # curtains
+    d.rectangle((wx1 - 40, wy0 - 40, wx1 + 60, wy1 + 60), fill=(160, 40, 50))
+    # family photo frames
+    frames = [(110, 330, 260, 500), (300, 300, 420, 450), (130, 560, 300, 700), (340, 520, 520, 760)]
+    for i, (a, b, c, e) in enumerate(frames):
+        d.rectangle((a, b, c, e), fill=(60, 40, 30))
+        d.rectangle((a + 12, b + 12, c - 12, e - 12), fill=[(120, 170, 220), (240, 200, 120), (140, 200, 140), (230, 160, 160)][i])
+        cx, cy = (a + c) / 2, (b + e) / 2 + 10
+        d.ellipse((cx - 22, cy - 40, cx + 22, cy + 4), fill=(110, 70, 40))
+        d.rounded_rectangle((cx - 34, cy + 6, cx + 34, e - 14), 12, fill=NAVY if i % 2 == 0 else GOLD)
+    d.text((430, 860), "HOME OF #7", font=font("Anton.ttf", 60), fill=NAVY, anchor="mm")
+    # big couch behind characters
+    d.rounded_rectangle((-40, 1080, 1280, 1420), 60, fill=(80, 110, 150))
+    d.rounded_rectangle((-40, 1220, 1280, 1500), 40, fill=(66, 92, 130))
+    for x in (160, 520, 880):
+        d.rounded_rectangle((x - 20, 1110, x + 200, 1260), 40, fill=(95, 125, 165))
+    # floor + rug
+    d.rectangle((0, 1500, BW, BH), fill=(120, 80, 50))
+    for y in range(1500, BH, 46):
+        d.line([(0, y), (BW, y)], fill=(105, 68, 42), width=4)
+    d.ellipse((60, 1650, 1180, 1980), fill=(190, 60, 60))
+    d.ellipse((140, 1690, 1100, 1940), outline=GOLD, width=10)
+    add_light(img, glow((800, 800), (255, 220, 160), 1.6, 0.35), (-200, 700))
+    return vignette(img, 0.5)
+
+
+def bg_stands(seed=33):
+    """Family seats in the stands; field glows below/behind."""
+    BW, BH = 1240, 2100
+    img = grad(BW, BH, (6, 10, 30), (16, 22, 50))
+    d = ImageDraw.Draw(img)
+    # field far below, seen over the rail
+    d.rectangle((0, 520, BW, 900), fill=(34, 120, 52))
+    for k in range(9):
+        d.line([(0, 540 + k * 42), (BW, 540 + k * 42)], fill=(230, 235, 230), width=3)
+    add_light(img, glow((1400, 700), (200, 220, 255), 1.5, 0.35), (-80, 300))
+    for tx in (100, BW - 100):
+        d.rectangle((tx - 70, 120, tx + 70, 180), fill=(40, 44, 60))
+        add_light(img, glow((500, 500), (255, 240, 200), 2.2, 0.8), (tx - 250, -100))
+    img = img.filter(ImageFilter.GaussianBlur(5))
+    # fans in rows behind the family
+    img = crowd_band(img, 900, 1300, seed, density=0.85)
+    img = img.filter(ImageFilter.GaussianBlur(2))
+    d = ImageDraw.Draw(img)
+    rnd = random.Random(seed)
+    for row in range(2):
+        y = 960 + row * 170
+        for i in range(-1, 10):
+            x = i * 140 + (row % 2) * 70 + rnd.randint(-10, 10)
+            col = rnd.choice([NAVY, GOLD, (200, 200, 205), (40, 60, 140)])
+            d.ellipse((x - 34, y - 70, x + 34, y), fill=_darken(rnd.choice([(110, 70, 40), (230, 180, 140), (160, 110, 70)]), 0.5))
+            d.rounded_rectangle((x - 60, y, x + 60, y + 170), 30, fill=_darken(col, 0.55))
+    d.rectangle((0, 1300, BW, BH), fill=(30, 34, 50))
+    return vignette(img, 0.5)
+
+
+def fg_stands():
+    """Foreground seat backs and railing that hide the family's legs."""
+    im = Image.new("RGBA", (W, 520), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    d.rectangle((0, 120, W, 520), fill=(22, 26, 40, 255))
+    for i in range(-1, 9):
+        x = i * 150 + 40
+        d.rounded_rectangle((x, 40, x + 130, 260), 26, fill=(20, 40, 100, 255))
+        d.rounded_rectangle((x + 10, 50, x + 120, 120), 20, fill=(30, 56, 130, 255))
+    d.rectangle((0, 250, W, 270), fill=(170, 175, 185, 255))
+    for x in range(0, W, 120):
+        d.rectangle((x, 270, x + 12, 520), fill=(140, 145, 155, 255))
+    d.rectangle((0, 380, W, 520), fill=(14, 16, 24, 255))
+    d.text((W / 2, 450), "SECTION 107  ·  ROW F", font=font("Inter-Black.otf", 34), fill=(120, 130, 160, 255), anchor="mm")
+    return im
+
+
+def fg_press():
+    """Press-conference table in the foreground."""
+    im = Image.new("RGBA", (W, 560), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    for i, x in enumerate(range(180, 960, 85)):
+        h = 120 + (i % 3) * 35
+        d.line([(x, 200), (x + (i % 2) * 20 - 10, 200 - h)], fill=(30, 30, 30, 255), width=8)
+        d.rounded_rectangle((x - 22, 200 - h - 40, x + 22, 200 - h + 10), 16,
+                            fill=[(200, 30, 40), (30, 30, 30), (30, 80, 200), (240, 240, 240)][i % 4] + (255,))
+    d.rectangle((0, 200, W, 560), fill=(16, 22, 44, 255))
+    d.rectangle((0, 200, W, 222), fill=GOLD + (255,))
+    d.text((W / 2, 330), "STALLIONS", font=font("Anton.ttf", 90), fill=GOLD + (255,), anchor="mm")
+    return im
