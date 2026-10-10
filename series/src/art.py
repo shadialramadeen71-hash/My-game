@@ -428,3 +428,201 @@ def bg_play_top(seed=11):
     return img
 
 PLAY_CFG = (2150, 560, 1700, 700, W / 2)
+
+
+# ---------------------------------------------------------------- extra locations
+
+def _clouds(img, n, area, color, seed, blur=18):
+    rnd = random.Random(seed)
+    layer = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    d = ImageDraw.Draw(layer)
+    for _ in range(n):
+        cx, cy = rnd.uniform(area[0], area[2]), rnd.uniform(area[1], area[3])
+        for k in range(5):
+            w, h = rnd.uniform(90, 200), rnd.uniform(40, 80)
+            ox = rnd.uniform(-140, 140)
+            d.ellipse((cx + ox - w, cy - h + rnd.uniform(-20, 20), cx + ox + w, cy + h), fill=color)
+    layer = layer.filter(ImageFilter.GaussianBlur(blur))
+    img = img.convert("RGBA")
+    img.alpha_composite(layer)
+    return img.convert("RGB")
+
+
+def bg_office(seed=21):
+    """Coach's office at night: city window, trophies, desk lamp."""
+    BW, BH = 1240, 2100
+    img = grad(BW, BH, (52, 34, 24), (26, 16, 12))
+    d = ImageDraw.Draw(img)
+    for x in range(0, BW, 110):  # wood panels
+        d.line([(x, 0), (x, BH)], fill=(38, 24, 16), width=4)
+    # window with city skyline
+    wx0, wy0, wx1, wy1 = 170, 230, 1070, 930
+    sky = grad(wx1 - wx0, wy1 - wy0, (8, 12, 34), (40, 30, 70))
+    img.paste(sky, (wx0, wy0))
+    rnd = random.Random(seed)
+    x = wx0
+    while x < wx1:
+        bw = rnd.randint(50, 120)
+        bh = rnd.randint(120, 460)
+        top = wy1 - bh
+        d.rectangle((x, top, x + bw, wy1), fill=(14, 16, 28))
+        for yy in range(top + 12, wy1 - 10, 22):
+            for xx in range(x + 8, x + bw - 8, 16):
+                if rnd.random() < 0.35:
+                    d.rectangle((xx, yy, xx + 7, yy + 10), fill=(255, 210, 120) if rnd.random() < 0.8 else (160, 200, 255))
+        x += bw + rnd.randint(2, 10)
+    # distant stadium glow in the window
+    add_light(img, glow((520, 260), (200, 220, 255), 1.8, 0.55), (560, 640))
+    d = ImageDraw.Draw(img)
+    for xx in (wx0, (wx0 + wx1) // 2, wx1):
+        d.rectangle((xx - 10, wy0, xx + 10, wy1), fill=(20, 14, 10))
+    d.rectangle((wx0 - 10, wy0 - 10, wx1 + 10, wy0 + 10), fill=(20, 14, 10))
+    d.rectangle((wx0 - 10, wy1 - 10, wx1 + 10, wy1 + 20), fill=(20, 14, 10))
+    # trophy shelf
+    d.rectangle((60, 1020, 1180, 1040), fill=(80, 52, 30))
+    for i, x in enumerate(range(120, 1180, 150)):
+        h = 90 + (i % 3) * 25
+        d.polygon([(x - 30, 1020 - h), (x + 30, 1020 - h), (x + 18, 1020 - h + 55), (x - 18, 1020 - h + 55)], fill=GOLD)
+        d.rectangle((x - 6, 1020 - h + 55, x + 6, 1000), fill=(200, 140, 0))
+        d.rectangle((x - 26, 1000, x + 26, 1020), fill=(40, 30, 24))
+    # framed photo + whiteboard edge
+    d.rectangle((40, 300, 140, 420), fill=(200, 190, 170), outline=(20, 14, 10), width=8)
+    # desk
+    d.rectangle((0, 1560, BW, 1640), fill=(70, 42, 24))
+    d.rectangle((0, 1640, BW, BH), fill=(38, 22, 12))
+    add_light(img, glow((900, 900), (255, 200, 120), 1.5, 0.35), (-250, 900))
+    return vignette(img, 0.6)
+
+
+def bg_practice(sunset=False, seed=23):
+    BW, BH = 1240, 2100
+    if sunset:
+        img = grad(BW, 1080, (60, 40, 110), (250, 140, 70))
+    else:
+        img = grad(BW, 1080, (60, 130, 220), (170, 210, 245))
+    big = Image.new("RGB", (BW, BH))
+    big.paste(img, (0, 0))
+    img = big
+    if sunset:
+        add_light(img, glow((900, 600), (255, 200, 120), 1.4, 0.9), (170, 700))
+        d = ImageDraw.Draw(img)
+        d.ellipse((560, 930, 680, 1050), fill=(255, 220, 150))
+        img = _clouds(img, 6, (0, 200, BW, 700), (255, 150, 120, 150), seed)
+    else:
+        add_light(img, glow((700, 700), (255, 255, 220), 1.6, 0.8), (700, -150))
+        img = _clouds(img, 7, (0, 150, BW, 650), (255, 255, 255, 210), seed)
+    d = ImageDraw.Draw(img)
+    # tree line + bleachers
+    rnd = random.Random(seed)
+    for x in range(-40, BW + 40, 46):
+        r = rnd.randint(40, 75)
+        d.ellipse((x - r, 1020 - r, x + r, 1060 + r // 2), fill=(30, 60, 36) if not sunset else (40, 30, 40))
+    for side in (0, 1):
+        x0 = 0 if side == 0 else BW - 380
+        for k in range(6):
+            d.rectangle((x0, 1000 + k * 14, x0 + 380, 1006 + k * 14), fill=(190, 195, 205) if not sunset else (120, 100, 110))
+    d.rectangle((0, 1080, BW, 1100), fill=(20, 70, 36))
+    cfg = (BH + 200, 1100, 3000, 1450, BW / 2)
+    draw_field(img, cfg, yard_start=70, depth_yards=40)
+    d = ImageDraw.Draw(img)
+    # goal post at far end
+    gx, gy = BW / 2, 1105
+    d.line([(gx, gy), (gx, gy - 120)], fill=(255, 210, 40), width=10)
+    d.line([(gx - 170, gy - 120), (gx + 170, gy - 120)], fill=(255, 210, 40), width=10)
+    d.line([(gx - 170, gy - 120), (gx - 170, gy - 380)], fill=(255, 210, 40), width=8)
+    d.line([(gx + 170, gy - 120), (gx + 170, gy - 380)], fill=(255, 210, 40), width=8)
+    # tackling dummies
+    for x, y, s in ((180, 1240, 1.0), (1040, 1230, 1.0), (330, 1150, 0.7), (900, 1150, 0.7)):
+        d.rounded_rectangle((x - 40 * s, y - 170 * s, x + 40 * s, y), int(30 * s), fill=(190, 30, 40))
+        d.rectangle((x - 40 * s, y - 110 * s, x + 40 * s, y - 90 * s), fill=GOLD)
+    if sunset:
+        tint = Image.new("RGB", img.size, (255, 120, 60))
+        img = Image.blend(img, tint, 0.18)
+    return vignette(img, 0.45)
+
+
+def bg_tunnel(seed=25):
+    """Stadium tunnel looking out at the bright field."""
+    BW, BH = 1240, 2100
+    img = Image.new("RGB", (BW, BH), (12, 13, 18))
+    d = ImageDraw.Draw(img)
+    vx, vy = BW / 2, 760
+    for k in range(18, 0, -1):
+        f = k / 18
+        w, h = 120 + 1300 * f ** 1.6, 160 + 1900 * f ** 1.6
+        c = int(14 + 60 * (1 - f))
+        d.rounded_rectangle((vx - w / 2, vy - h * 0.42, vx + w / 2, vy + h * 0.58), int(w * 0.25),
+                            fill=(c, c + 2, c + 10))
+        # ceiling light strips
+        if k % 3 == 0:
+            d.rectangle((vx - w * 0.18, vy - h * 0.42 + 8, vx + w * 0.18, vy - h * 0.42 + 8 + 10 * f), fill=(230, 235, 255))
+    # opening
+    d.rounded_rectangle((vx - 120, vy - 140, vx + 120, vy + 150), 40, fill=(235, 245, 230))
+    d.rectangle((vx - 120, vy + 60, vx + 120, vy + 150), fill=(110, 200, 120))
+    add_light(img, glow((1100, 1100), (255, 255, 230), 1.3, 0.9), (int(vx - 550), int(vy - 550)))
+    d = ImageDraw.Draw(img)
+    # team banners on the walls
+    for side in (-1, 1):
+        x = vx + side * 420
+        d.polygon([(x - 70, 380), (x + 70, 380), (x + 70, 900), (x, 960), (x - 70, 900)], fill=NAVY)
+        d.text((x, 520), "S", font=font("Anton.ttf", 150), fill=GOLD, anchor="mm")
+        d.text((x, 760), "WIN\nTHE\nDAY", font=font("Anton.ttf", 50), fill=WHITE, anchor="mm", align="center")
+    # floor with logo
+    d.polygon([(0, BH), (BW, BH), (vx + 160, vy + 150), (vx - 160, vy + 150)], fill=(24, 26, 34))
+    d.ellipse((vx - 330, 1600, vx + 330, 1820), outline=GOLD, width=8)
+    return vignette(img, 0.55)
+
+
+def bg_press(seed=27):
+    """Post-game press conference backdrop."""
+    BW, BH = 1240, 2100
+    img = grad(BW, BH, (235, 238, 245), (200, 205, 215))
+    d = ImageDraw.Draw(img)
+    fA, fB = font("Anton.ttf", 64), font("Anton.ttf", 52)
+    for r, y in enumerate(range(160, 1500, 150)):
+        for c, x in enumerate(range(-100, BW + 200, 300)):
+            xx = x + (150 if r % 2 else 0)
+            if (r + c) % 2 == 0:
+                d.text((xx, y), "STALLIONS", font=fA, fill=NAVY, anchor="mm")
+            else:
+                d.ellipse((xx - 45, y - 45, xx + 45, y + 45), fill=NAVY)
+                d.text((xx, y), "S", font=fB, fill=GOLD, anchor="mm")
+    # table with microphones
+    d.rectangle((0, 1560, BW, BH), fill=(16, 22, 44))
+    d.rectangle((0, 1560, BW, 1580), fill=GOLD)
+    for i, x in enumerate(range(200, 1100, 90)):
+        h = 140 + (i % 3) * 40
+        d.line([(x, 1560), (x + (i % 2) * 20 - 10, 1560 - h)], fill=(30, 30, 30), width=8)
+        d.rounded_rectangle((x - 22, 1560 - h - 40, x + 22, 1560 - h + 10), 16,
+                            fill=[(200, 30, 40), (30, 30, 30), (30, 80, 200), (240, 240, 240)][i % 4])
+    add_light(img, glow((1240, 1000), (255, 255, 255), 2.0, 0.25), (0, 300))
+    return vignette(img, 0.5)
+
+
+def bg_bench(seed=29):
+    """Sideline bench in the 4th quarter: blurred stadium, cooler, bench, heater."""
+    img = bg_stadium(seed=seed, blur=9)
+    img = ImageEnhance_brightness(img, 0.75)
+    d = ImageDraw.Draw(img)
+    BW = img.size[0]
+    # long team bench
+    d.rectangle((0, 1250, BW, 1300), fill=(20, 40, 100))
+    d.rectangle((0, 1300, BW, 1330), fill=(12, 24, 60))
+    for x in range(60, BW, 260):
+        d.rectangle((x, 1330, x + 16, 1520), fill=(70, 70, 80))
+    # cooler with cups (left) and heater (right)
+    d.rounded_rectangle((20, 1080, 230, 1300), 24, fill=GOLD)
+    d.rectangle((20, 1150, 230, 1170), fill=(200, 130, 0))
+    d.rounded_rectangle((70, 1040, 180, 1090), 10, fill=WHITE)
+    for k in range(5):
+        d.polygon([(250 + k * 34, 1300), (276 + k * 34, 1300), (272 + k * 34, 1260), (254 + k * 34, 1260)], fill=(240, 240, 240))
+    d.rounded_rectangle((1000, 1020, 1210, 1300), 20, fill=(60, 62, 70))
+    for k in range(6):
+        d.line([(1020, 1060 + k * 36), (1190, 1060 + k * 36)], fill=(255, 120, 40), width=8)
+    add_light(img, glow((500, 500), (255, 120, 40), 1.8, 0.45), (850, 900))
+    return img
+
+
+def ImageEnhance_brightness(img, f):
+    from PIL import ImageEnhance
+    return ImageEnhance.Brightness(img).enhance(f)

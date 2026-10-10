@@ -143,11 +143,20 @@ def caption_words(item):
     for w in ws:
         nw = norm(w["w"])
         disp = w["w"]
+        found = False
         for j in range(ti, min(ti + 4, len(toks))):
-            if norm(toks[j]).startswith(nw) or nw.startswith(norm(toks[j])) and norm(toks[j]):
-                disp = toks[j]
-                ti = j + 1
+            for k in range(j, min(j + 4, len(toks))):
+                if norm(" ".join(toks[j:k + 1])) == nw:
+                    disp, ti, found = " ".join(toks[j:k + 1]), k + 1, True
+                    break
+            if found:
                 break
+        if not found:
+            for j in range(ti, min(ti + 4, len(toks))):
+                if norm(toks[j]).startswith(nw) or nw.startswith(norm(toks[j])) and norm(toks[j]):
+                    disp = toks[j]
+                    ti = j + 1
+                    break
         out.append(dict(w=disp, t=item["t0"] + w["t"], e=item["t0"] + w["t"] + w["d"]))
     merged = []
     for w in out:
@@ -526,7 +535,7 @@ def hud(ep, scoreboard, t, total):
     d = ImageDraw.Draw(im, "RGBA")
     # top gradient for legibility
     for y in range(330):
-        a = int(170 * (1 - y / 330) ** 1.5)
+        a = int(235 * (1 - y / 330) ** 0.9)
         d.line([(0, y), (W, y)], fill=(0, 0, 0, a))
     d.text((W / 2, 92), SERIES, font=font("Anton.ttf", 70), fill=WHITE, anchor="mm", stroke_width=2, stroke_fill=(0, 0, 0))
     d.rectangle((W / 2 - 170, 134, W / 2 + 170, 139), fill=GOLD)
@@ -585,6 +594,14 @@ def render_episode(num):
             put(sfx, sfx_boom(), it["t0"] + 0.2, 0.7)
         if fx == "whistle":
             put(sfx, sfx_whistle(), it["t1"] + 0.05, 0.8)
+    # camera shutters at the press conference
+    for it in items:
+        if it["scene"] == "press":
+            rr = random.Random(num)
+            for _ in range(int((it["t1"] - it["t0"] + 1) * 3)):
+                n = int(SR * 0.05)
+                click = (RNG.standard_normal(n) * np.exp(-np.arange(n) / SR * 120)).astype(np.float32)
+                put(sfx, bp(click, 1500, 7000).astype(np.float32), it["t0"] - 0.4 + rr.uniform(0, it["t1"] - it["t0"] + 0.8), 0.35)
     # crowd ambience under stadium scenes
     base_crowd = crowd(N, 0.11, num)
     mask = np.zeros(N, np.float32)
@@ -641,7 +658,12 @@ def render_episode(num):
         "locker": art.bg_locker(),
         "film": art.bg_film(),
         "sideline": art.bg_stadium(blur=7),
-        "bench": ImageEnhance.Brightness(art.bg_stadium(seed=9, blur=9)).enhance(0.7),
+        "bench": art.bg_bench(),
+        "office": art.bg_office(),
+        "practice": art.bg_practice(False),
+        "practice_sunset": art.bg_practice(True),
+        "tunnel": art.bg_tunnel(),
+        "press": art.bg_press(),
         "celebrate": art.bg_stadium(blur=6),
         "broadcast": art.bg_stadium(),
     }
@@ -770,11 +792,16 @@ def render_episode(num):
                 frame = crop.copy()
             frame = frame.convert("RGBA")
             # stadium camera flashes
-            if scene in ("sideline", "broadcast", "celebrate", "bench"):
+            if scene in ("sideline", "broadcast", "celebrate", "bench", "press"):
                 d = ImageDraw.Draw(frame, "RGBA")
                 rnd = random.Random(fi)
-                for _ in range(5 if scene != "celebrate" else 14):
+                for _ in range({"celebrate": 14, "press": 3}.get(scene, 5)):
                     x, y = rnd.uniform(0, W), rnd.uniform(470, 980)
+                    if scene == "press":
+                        if rnd.random() < 0.6:
+                            continue
+                        frame.alpha_composite(FLASH, (int(x) - 300, int(y) - 300))
+                        continue
                     r = rnd.uniform(3, 9)
                     d.ellipse((x - r, y - r, x + r, y + r), fill=(255, 255, 240, rnd.randint(90, 230)))
             # characters
@@ -837,6 +864,9 @@ def render_episode(num):
                 if int(t * 2) % 2 == 0:
                     d.ellipse((82, 404, 104, 426), fill=WHITE)
                 d.text((180, 415), "LIVE", font=font("Anton.ttf", 46), fill=WHITE, anchor="mm")
+            # location label at the start of each new place
+            if scene in LOCATIONS and st < 2.6:
+                frame.alpha_composite(location_label(scene, st), (0, 0))
             # HUD
             sb = scoreboard_at(t)
             hk = (sb,)
@@ -907,6 +937,46 @@ def render_episode(num):
 
 
 BOTTOM_FADE = None
+FLASH = None
+LOCATIONS = {
+    "office": "COACH'S OFFICE  ·  MONDAY, 11:40 PM",
+    "locker": "STALLIONS LOCKER ROOM",
+    "practice_sunset": "PRACTICE FIELD  ·  SUNSET",
+    "film": "FILM ROOM  ·  6:00 AM",
+    "practice": "PRACTICE FIELD  ·  WEDNESDAY",
+    "tunnel": "STADIUM TUNNEL  ·  GAME DAY",
+    "sideline": "STALLIONS SIDELINE",
+    "bench": "STALLIONS TEAM BENCH",
+    "celebrate": "FINAL WHISTLE",
+    "press": "POST-GAME PRESS CONFERENCE",
+}
+LOC_CACHE = {}
+
+
+def location_label(scene, st):
+    """Slide-in place tag shown when the story moves to a new location."""
+    a = smooth(st / 0.35) * (1 - smooth((st - 2.1) / 0.5))
+    q = (scene, round(a * 20), round(smooth(st / 0.45) * 20))
+    if q in LOC_CACHE:
+        return LOC_CACHE[q]
+    im = Image.new("RGBA", (W, 460), (0, 0, 0, 0))
+    d = ImageDraw.Draw(im)
+    f = font("Inter-Black.otf", 34)
+    text = LOCATIONS[scene]
+    tw = d.textlength(text, font=f)
+    x = 50 - (1 - q[2] / 20) * 120
+    y = 345
+    al = int(230 * q[1] / 20)
+    d.rounded_rectangle((x, y, x + tw + 96, y + 66), 14, fill=(8, 10, 18, al))
+    d.rectangle((x, y, x + 10, y + 66), fill=GOLD + (int(255 * q[1] / 20),))
+    # map pin
+    px, py = x + 44, y + 30
+    d.ellipse((px - 13, py - 15, px + 13, py + 11), fill=GOLD + (int(255 * q[1] / 20),))
+    d.polygon([(px - 11, py + 2), (px + 11, py + 2), (px, py + 22)], fill=GOLD + (int(255 * q[1] / 20),))
+    d.ellipse((px - 5, py - 7, px + 5, py + 3), fill=(8, 10, 18, al))
+    d.text((x + 72, y + 33), text, font=f, fill=(255, 255, 255, int(255 * q[1] / 20)), anchor="lm")
+    LOC_CACHE[q] = im
+    return im
 
 
 def make_bottom_fade():
@@ -1003,8 +1073,9 @@ def outro_card(ep, t, bg):
 
 
 def init():
-    global BOTTOM_FADE
+    global BOTTOM_FADE, FLASH
     BOTTOM_FADE = make_bottom_fade()
+    FLASH = art.glow((600, 600), (255, 255, 255), 3.0, 0.9)
 
 
 if __name__ == "__main__":

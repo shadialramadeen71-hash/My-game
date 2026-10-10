@@ -6,13 +6,13 @@
 
 A 5-episode English-language vertical short series about an NFL rookie quarterback.
 
-| # | Episode | Length | File |
-|---|---------|--------|------|
-| 1 | The Call | 57s | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
-| 2 | Film Room | 52s | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
-| 3 | Pick Six | 54s | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
-| 4 | The Scar | 49s | `episodes/FourthQuarter_Ep4_TheScar.mp4` |
-| 5 | Fourth and Goal | 56s | `episodes/FourthQuarter_Ep5_FourthAndGoal.mp4` |
+| # | Episode | Length | Locations | File |
+|---|---------|--------|-----------|------|
+| 1 | The Call | 58s | Coach's office → Locker room → Practice field (sunset) | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
+| 2 | Film Room | 53s | Film room → Practice field (day) → Stadium tunnel | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
+| 3 | Pick Six | 54s | Live play → Sideline → Team bench | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
+| 4 | The Scar | 49s | Team bench → Sideline → Live broadcast | `episodes/FourthQuarter_Ep4_TheScar.mp4` |
+| 5 | Fourth and Goal | 57s | Broadcast → Sideline → Live play → Celebration → Press conference | `episodes/FourthQuarter_Ep5_FourthAndGoal.mp4` |
 
 **Story:** the starter tears his ACL and rookie Marcus Reed must start on prime time against the
 Wolves. Coach Dawson teaches him to read safety #24 Darius King, Marcus throws a pick six, learns
