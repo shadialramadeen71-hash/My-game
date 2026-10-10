@@ -6,11 +6,12 @@ import json, math, os, random, re, subprocess, sys
 from multiprocessing import Pool
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageEnhance, ImageFilter
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter
 from scipy.signal import butter, sosfilt
 
 import art
 import rig
+import cars
 from art import W, H, NAVY, GOLD, WOLF, WHITE, font, project
 from script import EPISODES, SERIES, CAST
 
@@ -121,22 +122,40 @@ def sfx_roar(d=4.0, seed=1):
 
 # ---------------------------------------------------------------- timeline
 
+DRIVE = {  # car scenes: car kind, passengers rear->front, cruising speed (px/s), night?
+    "drive_night": dict(car="coupe", seats=["MARCUS"], speed=1500, night=True),
+    "drive_day": dict(car="minivan", seats=["KAYLA", "MOM", "GRANDPA"], speed=110, night=False),
+}
+SPEED = {"KAYLA": 1.4, "GRANDPA": 0.55}
+ACCEL = 2400.0
+DEPTH_PX = 700.0
+
+
+def depth(z):
+    """Floor depth z (0 front .. 1 back) -> (ground_y, scale)."""
+    return GROUND_Y - 330 * z, 1.0 - 0.3 * z
+
+
 def _marks(cast):
-    return {w: x for w, x in zip(cast, MARKS[len(cast)])}
+    return {w: (x, 0.22 if (i % 2 and len(cast) > 3) else 0.0) for i, (w, x) in enumerate(zip(cast, MARKS[len(cast)]))}
 
 
 def build_timeline(ep):
     """Lay out lines on the episode clock. Lines are grouped into location segments; characters walk
-    in at the start of a segment, re-position when the cast changes, and walk out at its end."""
+    in at the start of a segment, follow per-line blocking, and walk out at its end. Car scenes drive
+    in and out of frame instead."""
     items, segs, t = [], [], INTRO
     scene, cast = None, None
 
     def close(seg, t):
-        if seg["cast"]:
+        if seg["scene"] in DRIVE:
+            seg["exit"] = t + 0.1
+            t = seg["exit"] + 1.2
+        elif seg["cast"]:
             seg["exit"] = t + 0.1
             m = _marks(seg["cast"])
             n = len(seg["cast"])
-            t = seg["exit"] + (W + 320 - min(m.values(), default=W)) / WALK_SPEED + 0.12 * (n - 1) + 0.05
+            t = seg["exit"] + 1.25 + 0.12 * (n - 1)
         else:
             t += 0.25
         seg["end"] = t
@@ -149,22 +168,26 @@ def build_timeline(ep):
         new_scene = opt.get("scene", scene)
         is_new = scene is None or (new_scene != scene and not opt.get("cont"))
         if is_new:
-            new_cast = opt.get("cast") or CAST.get(new_scene, [])
+            new_cast = [] if new_scene in DRIVE else (opt.get("cast") or CAST.get(new_scene, []))
             if segs:
                 t = close(segs[-1], t)
-            seg = dict(scene=new_scene, start=t, cast=new_cast, changes=[(t, new_cast)], casts={*new_cast})
+            seg = dict(scene=new_scene, start=t, cast=new_cast, changes=[(t, new_cast)], casts={*new_cast}, blocks=[])
             segs.append(seg)
-            t += 1.05 if new_cast else 0.35
+            t += 1.5 if new_scene in DRIVE else (1.15 if new_cast else 0.35)
         elif opt.get("cast") and opt["cast"] != cast:
             new_cast = opt["cast"]
             seg["changes"].append((t, new_cast))
             seg["casts"] |= set(new_cast)
             seg["cast"] = new_cast
-            t += 1.0
+            t += 1.1
         else:
             new_cast = cast
         scene, cast = new_scene, new_cast
         dur = len(audio) / SR
+        if opt.get("block"):
+            seg["blocks"].append((t + 0.15, opt["block"]))
+        if opt.get("block_after"):
+            seg["blocks"].append((t + dur, opt["block_after"]))
         items.append(dict(i=i, spk=spk, text=text, opt=opt, scene=scene, seg=len(segs) - 1, t0=t, t1=t + dur,
                           audio=audio, words=words))
         t += dur + 0.32
@@ -177,48 +200,101 @@ def build_timeline(ep):
     return items, segs, total
 
 
+def _profile(d, vmax):
+    """Trapezoidal velocity profile: returns (duration, s(tau), v(tau))."""
+    a = ACCEL
+    if d <= 1e-6:
+        return 0.0, (lambda tau: 0.0), (lambda tau: 0.0)
+    if d < vmax * vmax / a:  # never reaches top speed
+        ta = math.sqrt(d / a)
+        T = 2 * ta
+        s = lambda tau: 0.5 * a * tau * tau if tau < ta else d - 0.5 * a * (T - tau) ** 2
+        v = lambda tau: a * tau if tau < ta else a * (T - tau)
+        return T, s, v
+    ta = vmax / a
+    T = d / vmax + ta
+    def s(tau):
+        if tau < ta:
+            return 0.5 * a * tau * tau
+        if tau < T - ta:
+            return 0.5 * a * ta * ta + vmax * (tau - ta)
+        return d - 0.5 * a * (T - tau) ** 2
+    def v(tau):
+        if tau < ta:
+            return a * tau
+        if tau < T - ta:
+            return vmax
+        return a * (T - tau)
+    return T, s, v
+
+
+def _move(start, p0, p1, who):
+    d = math.hypot(p1[0] - p0[0], (p1[1] - p0[1]) * DEPTH_PX)
+    T, s, v = _profile(d, WALK_SPEED * SPEED.get(who, 1.0))
+    return dict(start=start, p0=p0, p1=p1, d=d, T=T, s=s, v=v)
+
+
 def plan_moves(seg):
-    """Per character: list of (start_time, x_from, x_to)."""
+    """Per character: ordered list of moves on the floor (x, depth)."""
     moves = {w: [] for w in seg["casts"]}
     cur = {}
-    for ci, (tc, cast) in enumerate(seg["changes"]):
-        m = _marks(cast)
-        entering = sorted([w for w in cast if w not in cur], key=lambda w: -m[w])
-        for k, w in enumerate(entering):
-            x0 = -320 - k * 230
-            moves[w].append((tc + 0.05 + k * 0.1, x0, m[w]))
-        for w in cast:
-            if w in cur and cur[w] != m[w]:
-                moves[w].append((tc + 0.05, cur[w], m[w]))
-        for w in list(cur):
-            if w not in cast:
-                moves[w].append((tc + 0.05, cur[w], W + 320))
-                del cur[w]
-        cur.update(m)
+
+    def where(w, t):
+        st = actor_state(moves[w], t)
+        return (st[0], st[1])
+
+    events = [(tc, "cast", c) for tc, c in seg["changes"]] + [(tb, "block", b) for tb, b in seg["blocks"]]
+    events.sort(key=lambda e: e[0])
+    for tc, kind, val in events:
+        if kind == "cast":
+            m = _marks(val)
+            entering = sorted([w for w in val if w not in cur], key=lambda w: -m[w][0])
+            for k, w in enumerate(entering):
+                moves[w].append(_move(tc + 0.05 + k * 0.12, (-330 - k * 230, m[w][1]), m[w], w))
+            for w in val:
+                if w in cur and cur[w] != m[w]:
+                    moves[w].append(_move(tc + 0.05, where(w, tc), m[w], w))
+            for w in list(cur):
+                if w not in val:
+                    moves[w].append(_move(tc + 0.05, where(w, tc), (W + 330, cur[w][1]), w))
+                    del cur[w]
+            cur.update(m)
+        else:
+            for w, target in val.items():
+                if w in cur:
+                    moves[w].append(_move(tc, where(w, tc), tuple(target), w))
+                    cur[w] = tuple(target)
     if seg.get("exit") is not None:
-        for k, w in enumerate(sorted(cur, key=lambda w: -cur[w])):
-            moves[w].append((seg["exit"] + k * 0.12, cur[w], W + 320))
+        for k, w in enumerate(sorted(cur, key=lambda w: -cur[w][0])):
+            p = where(w, seg["exit"])
+            moves[w].append(_move(seg["exit"] + k * 0.12, p, (W + 330, p[1]), w))
     return moves
 
 
 def actor_state(moves, t):
-    """-> (x, moving, phase) or None before the character first appears."""
+    """-> (x, z, moving, phase, vx)."""
     if not moves:
-        return -999, False, 0.0
-    x, dist, moving = moves[0][1], 0.0, False
-    for (s, a, b) in moves:
-        if t < s:
+        return -999, 0.0, False, 0.0, 0.0
+    x, z = moves[0]["p0"]
+    dist, moving, vx = 0.0, False, 0.0
+    for mv in moves:
+        if t < mv["start"]:
             break
-        dur = abs(b - a) / WALK_SPEED
-        if t < s + dur:
-            f = (t - s) / dur
-            x = a + (b - a) * f
-            dist += abs(b - a) * f
+        tau = t - mv["start"]
+        (x0, z0), (x1, z1) = mv["p0"], mv["p1"]
+        if mv["d"] <= 1e-6:
+            x, z = x1, z1
+            continue
+        if tau < mv["T"]:
+            f = mv["s"](tau) / mv["d"]
+            x, z = x0 + (x1 - x0) * f, z0 + (z1 - z0) * f
+            dist += mv["s"](tau)
             moving = True
+            vx = mv["v"](tau) * (x1 - x0) / mv["d"]
             break
-        x = b
-        dist += abs(b - a)
-    return x, moving, dist / STRIDE
+        x, z = x1, z1
+        dist += mv["d"]
+    return x, z, moving, dist / STRIDE, vx
 
 
 def caption_words(item):
@@ -656,13 +732,30 @@ def render_episode(num):
     step = lp(RNG.standard_normal(int(SR * 0.07)), 500) * np.exp(-np.arange(int(SR * 0.07)) / SR * 60)
     step = (step / np.abs(step).max()).astype(np.float32)
     for s in segs:
-        for w, mv in s["moves"].items():
-            for (st0, a, b) in mv:
-                n_steps = int(abs(b - a) / (STRIDE / 2))
-                for k in range(n_steps):
-                    ts = st0 + k * (STRIDE / 2) / WALK_SPEED
+        for w, mvs in s["moves"].items():
+            for mv in mvs:
+                n_steps = int(mv["d"] / (STRIDE / 2))
+                for k in range(1, n_steps + 1):
+                    # time at which distance k*STRIDE/2 is reached (search the profile)
+                    target, lo, hi = k * STRIDE / 2, 0.0, mv["T"]
+                    for _ in range(18):
+                        mid = (lo + hi) / 2
+                        lo, hi = (mid, hi) if mv["s"](mid) < target else (lo, mid)
+                    ts = mv["start"] + hi
                     if s["start"] <= ts <= s["end"]:
                         put(sfx, step, ts, 0.12 * rig.SPECS[w]["scale"])
+    # engines for driving scenes
+    for s in segs:
+        if s["scene"] in DRIVE:
+            n = int((s["end"] - s["start"] + 0.6) * SR)
+            tt_ = np.arange(n) / SR
+            dv = DRIVE[s["scene"]]
+            hz = 38 if dv["speed"] > 500 else 22
+            eng = np.sin(2 * np.pi * hz * tt_ + 0.4 * np.sin(2 * np.pi * 3 * tt_)) * 0.5
+            eng += 0.4 * lp(RNG.standard_normal(n), 140)
+            eng += (0.35 if dv["speed"] > 500 else 0.08) * bp(RNG.standard_normal(n), 300, 1200)
+            env = np.clip(tt_ / 0.5, 0, 1) * np.clip((tt_[-1] - tt_) / 0.6, 0, 1)
+            put(sfx, (eng / np.abs(eng).max() * env * (0.32 if dv["speed"] > 500 else 0.2)).astype(np.float32), s["start"] - 0.3)
     for it in items:
         fx = it["opt"].get("fx")
         if fx == "boom":
@@ -730,7 +823,23 @@ def render_episode(num):
         return float(np.sqrt((a ** 2).mean())) if len(a) else 0.0
 
     # ------------------------------------------------ visuals
-    actors = {w: rig.Actor(w) for s in segs for w in s['casts']}
+    needed = {w for s in segs for w in s['casts']}
+    for s in segs:
+        if s["scene"] in DRIVE:
+            needed |= set(DRIVE[s["scene"]]["seats"])
+            needed |= {it2["spk"] for it2 in items if it2["seg"] == segs.index(s) and it2["spk"] != "ANNOUNCER"}
+    actors = {w: rig.Actor(w) for w in needed}
+    road = {k: cars.road_layers(v["night"]) for k, v in DRIVE.items() if any(s["scene"] == k for s in segs)}
+    car_objs = {k: cars.Car(DRIVE[k]["car"]) for k in road}
+    actors_car = {w: {k: h.resize((int(h.width * 0.6), int(h.height * 0.6)), Image.LANCZOS) if w != "KAYLA" else
+                      h.resize((int(h.width * 0.6 / 0.68 * 0.8), int(h.height * 0.6 / 0.68 * 0.8)), Image.LANCZOS)
+                      for k, h in actors[w].heads.items()} for w in actors}
+    for w in actors_car:
+        if w != "KAYLA":
+            sc_ = 1 / rig.SPECS[w]["scale"]
+            actors_car[w] = {k: h.resize((int(h.width * sc_), int(h.height * sc_)), Image.LANCZOS) for k, h in actors_car[w].items()}
+    actors_phone = {w: {k: h.resize((int(h.width * 0.3 / rig.SPECS[w]["scale"]), int(h.height * 0.3 / rig.SPECS[w]["scale"])),
+                                    Image.LANCZOS) for k, h in actors[w].heads.items()} for w in actors}
     fg_stands, fg_press = art.fg_stands(), art.fg_press()
     td_catch = next((p['catch'] for p in plays.values() if p['kind'] == 'touchdown'), None)
     bgs = {
@@ -848,7 +957,40 @@ def render_episode(num):
             idx = items.index(it)
             s0 = seg["start"]
             st = t - s0
-            if scene == "play":
+            if scene in DRIVE:
+                dv = DRIVE[scene]
+                frame = Image.new("RGBA", (W, H))
+                # car glides in (decelerating), cruises, then accelerates away
+                tin = smooth(min(st / 1.3, 1))
+                tout = max(0.0, t - seg["exit"]) if seg.get("exit") else 0.0
+                carx = 540 - 1500 * (1 - tin) ** 2 + 0.5 * 1500 * tout * tout
+                dist = dv["speed"] * st
+                cars.draw_road(frame, road[scene], dist, dv["night"])
+                bike = next((it2 for it2 in items if it2["seg"] == si and it2["opt"].get("fx") == "bike"), None)
+                if bike and t > bike["t0"] - 1.2:
+                    cars.draw_cyclist(frame, -250 + (t - bike["t0"] + 1.2) * 330, t)
+                heads = []
+                for w in dv["seats"]:
+                    a_ = actors_car[w]
+                    is_spk = sp is not None and sp["spk"] == w and sp["t0"] <= t <= sp["t1"]
+                    m = 0
+                    if is_spk:
+                        lv = level(sp, t)
+                        m = 2 if lv > 0.09 else (1 if lv > 0.03 else 0)
+                    bl = any(bt + blink_off[w] <= t < bt + blink_off[w] + 0.13 for bt in blink_times)
+                    heads.append((a_[(m, bl)], (0, 0)))
+                car_objs[scene].draw(frame, carx, dist, t, heads, night=dv["night"])
+                phone = next((it2 for it2 in items if it2["seg"] == si and it2["spk"] not in dv["seats"]
+                              and it2["spk"] != "ANNOUNCER"), None)
+                if phone and t >= phone["t0"] - 0.3:
+                    who = phone["spk"]
+                    is_spk = sp is not None and sp["spk"] == who and sp["t0"] <= t <= sp["t1"]
+                    m = 0
+                    if is_spk:
+                        lv = level(sp, t)
+                        m = 2 if lv > 0.09 else (1 if lv > 0.03 else 0)
+                    frame.alpha_composite(phone_card(who, actors_phone[who][(m, False)], t - phone["t0"]), (0, 0))
+            elif scene == "play":
                 frame = Image.new("RGB", (W, H))
                 draw_play(frame, plays[idx], t)
             else:
@@ -897,30 +1039,40 @@ def render_episode(num):
                 in_cast = sp is not None and sp["spk"] in seg["casts"]
                 states = {}
                 for w in seg["casts"]:
-                    x, moving, phase = actor_state(seg["moves"][w], t)
+                    x, z, moving, phase, vx = actor_state(seg["moves"][w], t)
                     if -300 < x < W + 300:
-                        states[w] = (x, moving, phase)
-                for w, (x, moving, phase) in states.items():
-                    sc = rig.SPECS[w]["scale"]
-                    d.ellipse((x - 120 * sc, GROUND_Y - 16, x + 120 * sc, GROUND_Y + 14), fill=(0, 0, 0, 80))
-                order = sorted(states, key=lambda w: (-rig.SPECS[w]["scale"], sp is not None and sp["spk"] == w))
+                        states[w] = (x, z, moving, phase, vx)
+                for w, (x, z, moving, phase, vx) in states.items():
+                    gy, dsc = depth(z)
+                    sc = rig.SPECS[w]["scale"] * dsc
+                    sx = 540 + (x - 540) * dsc
+                    d.ellipse((sx - 120 * sc, gy - 16 * dsc, sx + 120 * sc, gy + 14 * dsc), fill=(0, 0, 0, 80))
+                order = sorted(states, key=lambda w: (-states[w][1], -rig.SPECS[w]["scale"], sp is not None and sp["spk"] == w))
                 for k, w in enumerate(order):
-                    x, moving, phase = states[w]
+                    x, z, moving, phase, vx = states[w]
+                    gy, dsc = depth(z)
+                    sx = 540 + (x - 540) * dsc
                     act = actors[w]
                     is_spk = sp is not None and sp["spk"] == w and speaking
                     lift = 0
+                    lean = 0.0
                     if moving:
                         pose = ("walk", int(phase * rig.Actor.WALK_FRAMES) % rig.Actor.WALK_FRAMES)
+                        lean = -6.0 * vx / (WALK_SPEED * SPEED.get(w, 1.0))
                     elif scene == "celebrate":
-                        fast = 7 if w == "GRANDPA" else 5
-                        pose = (("cheer", "point")[int(t * 3) % 2] if w == "GRANDPA" else "cheer", int(t * 4 + k) % 2)
-                        lift = int(45 * abs(math.sin(t * fast + k * 1.3)))
+                        # ballistic jumps: height follows a gravity parabola, staggered per person
+                        T = 0.62 + 0.09 * k if w != "GRANDPA" else 0.42
+                        f = ((t + k * 0.27) % T) / T
+                        lift = int((150 if w != "GRANDPA" else 60) * 4 * f * (1 - f))
+                        pose = (("cheer", "point")[int(t * 3) % 2] if w == "GRANDPA" else "cheer", int(f * 2) % 2)
+                        lean = 4 * math.sin(t * 8) if w == "GRANDPA" else 0.0
                     elif is_spk and sp["opt"].get("pose") == "point":
                         pose = ("point", int(t * 3) % 2)
                         lift = int(12 * abs(math.sin(t * 6)))
                     elif is_spk:
                         g = (math.sin((t - sp["t0"]) * 3.4) + 1) / 2
                         pose = ("talk", int(round(g * (rig.Actor.TALK_FRAMES - 1))))
+                        lean = 1.2 * math.sin((t - sp["t0"]) * 1.7)
                     else:
                         pose = ("idle", 0)
                     m = 0
@@ -929,7 +1081,7 @@ def render_episode(num):
                         m = 2 if lv > 0.09 else (1 if lv > 0.03 else 0)
                     bl = any(bt + blink_off[w] <= t < bt + blink_off[w] + 0.13 for bt in blink_times)
                     active = (not in_cast) or sp["spk"] == w or scene == "celebrate"
-                    act.compose(frame, x, GROUND_Y, pose, m, bl, active=active, lift=lift)
+                    act.compose(frame, sx, gy, pose, m, bl, active=active, lift=lift, scale=dsc, lean=lean)
                 if scene == "stands":
                     frame.alpha_composite(fg_stands, (0, H - fg_stands.height))
                 elif scene == "press":
@@ -995,7 +1147,7 @@ def render_episode(num):
                 s = 0.82 + 0.18 * ease_out_back(age / 0.18)
                 if s != 1.0:
                     cimg = cimg.resize((max(1, int(cimg.width * s)), max(1, int(cimg.height * s))), Image.BILINEAR)
-                cy = 1520 if scene not in ("play", "broadcast") else 1690
+                cy = 1690 if scene in ("play", "broadcast") or scene in DRIVE else 1520
                 frame.alpha_composite(cimg, (int(W / 2 - cimg.width / 2), int(cy - cimg.height / 2 + 40)))
                 chip = chips[ch["spk"]]
                 frame.alpha_composite(chip, (int(W / 2 - chip.width / 2), int(cy - cimg.height / 2 - 40)))
@@ -1054,7 +1206,34 @@ LOCATIONS = {
     "press": "POST-GAME PRESS CONFERENCE",
     "home": "THE REED FAMILY HOUSE",
     "stands": "SECTION 107  ·  THE REED FAMILY",
+    "drive_night": "DRIVING HOME  ·  12:04 AM",
+    "drive_day": "ON THE WAY TO THE STADIUM",
 }
+
+
+def phone_card(who, head, k):
+    """Incoming-call card with the caller's animated face."""
+    a = smooth(k / 0.35 + 0.86)
+    al = int(235 * a)
+    x0, y0 = W - 470, 440 - int((1 - a) * 60)
+    out = Image.new("RGBA", (W, 760), (0, 0, 0, 0))
+    d = ImageDraw.Draw(out)
+    d.rounded_rectangle((x0, y0, x0 + 420, y0 + 250), 34, fill=(18, 20, 30, al), outline=(255, 255, 255, int(60 * a)), width=3)
+    d.ellipse((x0 + 24, y0 + 30, x0 + 214, y0 + 220), fill=(255, 120, 180, al))
+    face = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    face.alpha_composite(head, (int(x0 + 119 - head.width / 2), int(y0 + 132 - head.height * 0.56)))
+    mask = Image.new("L", out.size, 0)
+    ImageDraw.Draw(mask).ellipse((x0 + 24, y0 + 30, x0 + 214, y0 + 220), fill=255)
+    face.putalpha(ImageChops.multiply(face.getchannel("A"), mask))
+    out.alpha_composite(face)
+    d = ImageDraw.Draw(out)
+    d.text((x0 + 236, y0 + 80), SPEAKER_STYLE[who][0].split("·")[0].strip(), font=font("Inter-Black.otf", 40),
+           fill=(255, 255, 255, al))
+    d.text((x0 + 236, y0 + 140), f"on call  0:{int(max(k, 0)) % 60:02d}", font=font("Inter-Bold.otf", 30),
+           fill=(120, 230, 140, al))
+    return out
+
+
 LOC_CACHE = {}
 
 

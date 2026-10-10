@@ -327,15 +327,43 @@ class Actor:
         self.width = int(CW * sc)
         self.height = int(CH * sc)
 
-    def compose(self, frame, x, ground_y, pose, mouth, blink, active=True, lift=0):
-        body, neck = (self.poses if active else self.dim)[pose]
-        head = (self.heads if active else self.heads_dim)[(mouth, blink)]
-        bx = int(x - body.width / 2)
-        by = int(ground_y - body.height - lift)
-        frame.paste(body, (bx, by), body)
-        hx = int(bx + neck[0] - self.neck_in_head[0])
-        hy = int(by + neck[1] - self.neck_in_head[1])
-        frame.paste(head, (hx, hy), head)
+    def _get(self, key, img, q):
+        from collections import OrderedDict
+        if not hasattr(self, "_cache"):
+            self._cache = OrderedDict()
+        k = (key, q)
+        if k in self._cache:
+            self._cache.move_to_end(k)
+            return self._cache[k]
+        f = q / 50
+        out = img.resize((max(1, int(img.width * f)), max(1, int(img.height * f))), Image.BILINEAR) if q != 50 else img
+        self._cache[k] = out
+        if len(self._cache) > 260:
+            self._cache.popitem(last=False)
+        return out
+
+    def compose(self, frame, x, ground_y, pose, mouth, blink, active=True, lift=0, scale=1.0, lean=0.0):
+        q = int(round(scale * 50))
+        f = q / 50
+        body0, neck0 = (self.poses if active else self.dim)[pose]
+        head0 = (self.heads if active else self.heads_dim)[(mouth, blink)]
+        body = self._get(("b", pose, active), body0, q)
+        head = self._get(("h", mouth, blink, active), head0, q)
+        neck = (neck0[0] * f, neck0[1] * f)
+        nih = (self.neck_in_head[0] * f, self.neck_in_head[1] * f)
+        lift = int(lift * f)
+        if abs(lean) < 0.8:
+            bx = int(x - body.width / 2)
+            by = int(ground_y - body.height - lift)
+            frame.paste(body, (bx, by), body)
+            frame.paste(head, (int(bx + neck[0] - nih[0]), int(by + neck[1] - nih[1])), head)
+            return
+        pad = int(160 * f)
+        cv = Image.new("RGBA", (body.width + 2 * pad, body.height + pad), (0, 0, 0, 0))
+        cv.paste(body, (pad, pad), body)
+        cv.alpha_composite(head, (int(pad + neck[0] - nih[0]), int(pad + neck[1] - nih[1])))
+        cv = cv.rotate(lean, resample=Image.BILINEAR, center=(cv.width / 2, cv.height - 10))
+        frame.paste(cv, (int(x - cv.width / 2), int(ground_y - cv.height - lift)), cv)
 
 
 def _dim(im):

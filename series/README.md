@@ -10,11 +10,15 @@ A 5-episode English-language vertical short series about an NFL rookie quarterba
 
 | # | Episode | Length | Locations | File |
 |---|---------|--------|-----------|------|
-| 1 | The Call | 70s | Coach's office → Reed family house | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
-| 2 | Film Room | 79s | Film room → Practice field (Linda visits) → Stadium tunnel | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
-| 3 | Pick Six | 68s | Live play → Family in the stands → Sideline | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
+| 1 | The Call | 86s | Coach's office → Driving home at night (phone call with Mom) → Reed family house | `episodes/FourthQuarter_Ep1_TheCall.mp4` |
+| 2 | Film Room | 86s | Film room → Practice field (Linda visits) → Stadium tunnel | `episodes/FourthQuarter_Ep2_FilmRoom.mp4` |
+| 3 | Pick Six | 85s | Family minivan (Grandpa drives slowly) → Live play → Stands → Sideline | `episodes/FourthQuarter_Ep3_PickSix.mp4` |
 | 4 | The Scar | 64s | Team bench → Family in the stands → Live broadcast | `episodes/FourthQuarter_Ep4_TheScar.mp4` |
 | 5 | Fourth and Goal | 86s | Broadcast → Sideline → Stands → Live play → Celebration → Press conference | `episodes/FourthQuarter_Ep5_FourthAndGoal.mp4` |
+
+Motion: characters walk with accelerating/decelerating (trapezoidal) velocity, lean into their movement,
+move in depth through each room or field (perspective scaling), and jump on gravity arcs; cars drive with
+spinning wheels, suspension bounce and parallax scrolling backgrounds.
 
 **Story:** the starter tears his ACL and rookie Marcus Reed must start on prime time against the
 Wolves. Coach Dawson teaches him to read safety #24 Darius King, Marcus throws a pick six, learns
