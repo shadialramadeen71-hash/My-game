@@ -72,6 +72,7 @@ button:active{transform:scale(.97)}
 #msg{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;font-size:1.1rem;color:var(--muted);background:var(--night)}
 @media (prefers-reduced-motion:reduce){#card{transition:none}}
 </style>
+<script src="voices.js"></script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
 </head>
 <body>
@@ -549,7 +550,7 @@ const hp = k => H[k].root.position;
 
 /* ================= audio: music + sfx (Web Audio, all synthesized) ================= */
 const Sound = (() => {
-  let ctx = null, master, music, sfx, rev, noiseBuf, muted = false;
+  let ctx = null, master, music, sfx, vbus, rev, noiseBuf, muted = false;
   let mood = null, pending = undefined, step = 0, nextT = 0;
   const mtof = n => 440*Math.pow(2,(n-69)/12);
   const mel = list => { const a = Array(64).fill(null); let p = 0; for(const [n,d] of list){ if(n != null) a[p] = {n,d}; p += d; } return a; };
@@ -576,6 +577,7 @@ const Sound = (() => {
     const comp = ctx.createDynamicsCompressor(); master.connect(comp); comp.connect(ctx.destination);
     music = ctx.createGain(); music.gain.value = .5; music.connect(master);
     sfx = ctx.createGain(); sfx.gain.value = .9; sfx.connect(master);
+    vbus = ctx.createGain(); vbus.gain.value = 1.15; vbus.connect(master);
     rev = ctx.createConvolver(); rev.buffer = impulse(2.2); const wet = ctx.createGain(); wet.gain.value = .3; rev.connect(wet); wet.connect(master);
     noiseBuf = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate); const nd = noiseBuf.getChannelData(0); for(let i=0;i<nd.length;i++) nd[i] = Math.random()*2-1;
     nextT = ctx.currentTime + .05;
@@ -622,6 +624,8 @@ const Sound = (() => {
     setMood(m){ if(m === mood && pending === undefined) return; pending = m; },
     pause(){ ctx && ctx.suspend(); }, resume(){ ctx && ctx.resume(); },
     toggleMute(){ muted = !muted; if(master) master.gain.value = muted ? 0 : .85; return muted; },
+    get ctx(){ return ctx; },
+    playClip(buf){ const s = ctx.createBufferSource(); s.buffer = buf; s.connect(vbus); s.start(); return s; },
     duck(on){ if(music) music.gain.setTargetAtTime(on ? .2 : .5, ctx.currentTime, .15); },
     whoosh(){ if(!ctx) return; const t = ctx.currentTime, n = nz(t,.7,'bandpass',300,.6,1.2); n.f.frequency.exponentialRampToValueAtTime(3000,t+.3); n.f.frequency.exponentialRampToValueAtTime(500,t+.7); },
     zap(){ if(!ctx) return; const t = ctx.currentTime, o = voice('sawtooth',1400,t,.22,.12,.005,.05,6000,sfx); o.frequency.exponentialRampToValueAtTime(160,t+.25); },
@@ -640,35 +644,33 @@ const Sound = (() => {
 
 /* ================= voices: every line is spoken (Web Speech API, built into the device) ================= */
 const Voice = (() => {
-  const synth = window.speechSynthesis;
-  let voices = [], muted = false, who = null, n = 0;
-  const load = () => { voices = synth ? synth.getVoices().filter(v => /^en/i.test(v.lang)) : []; };
-  if(synth){ load(); synth.addEventListener?.('voiceschanged', load); }
-  const FEMALE = /female|samantha|victoria|karen|moira|tessa|fiona|zira|aria|jenny|susan|serena|allison|ava|libby|sonia|natasha|michelle/i;
-  const MALE = /\bmale|daniel|alex|fred|david|mark|guy|ryan|george|aaron|arthur|oliver|thomas|rishi|christopher|eric|james/i;
-  const pick = (kind, i) => {
-    const f = voices.filter(v => FEMALE.test(v.name)), m = voices.filter(v => MALE.test(v.name) && !/female/i.test(v.name));
-    const list = kind === 'f' ? f : m;
-    return list.length ? list[i % list.length] : (voices[0] || null);
-  };
-  // each character: voice gender, which voice, pitch (0-2), speed
-  const CAST = {narr:['m',0,1,.95], barq:['m',1,1.55,1.15], sakhr:['m',2,.55,.88], nasma:['f',0,1.25,1.05], dhalam:['m',0,.2,.82]};
-  const clean = t => t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{FE0F}]/gu, '').trim();
+  const bank = window.STAR_SQUAD_VOICES || {}, bufs = {};
+  let src = null, who = null, loading = null, n = 0;
+  function load(){
+    const ctx = Sound.ctx; if(loading || !ctx) return loading;
+    loading = Promise.all(Object.entries(bank).map(async ([k, b64]) => {
+      const bin = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+      try { bufs[k] = await ctx.decodeAudioData(bin.buffer); } catch(e) {}
+    }));
+    return loading;
+  }
+  function play(k, buf, id){
+    if(id !== n) return;
+    if(src){ try { src.stop(); } catch(e) {} }
+    const me = src = Sound.playClip(buf); who = k; Sound.duck(true);
+    me.onended = () => { if(src === me){ src = null; who = null; Sound.duck(false); } };
+  }
   return {
     get who(){ return who; },
-    get active(){ return !!synth && voices.length > 0 && !muted; },
-    unlock(){ if(synth){ load(); const u = new SpeechSynthesisUtterance(''); u.volume = 0; synth.speak(u); } },
+    get active(){ return Object.keys(bank).length > 0; },
+    unlock(){ load(); },
     say(k, text){
-      if(!synth || muted) return;
-      const [g, i, pitch, rate] = CAST[k], u = new SpeechSynthesisUtterance(clean(text)), id = ++n;
-      u.lang = 'en-US'; const v = pick(g, i); if(v) u.voice = v;
-      u.pitch = pitch; u.rate = rate; u.volume = 1;
-      u.onstart = () => { who = k; Sound.duck(true); };
-      u.onend = u.onerror = () => { if(id === n || !synth.speaking){ who = null; Sound.duck(false); } };
-      synth.speak(u);
+      const key = k + '|' + text, id = ++n;
+      if(bufs[key]) play(k, bufs[key], id);
+      else { const l = load(); l && l.then(() => bufs[key] && play(k, bufs[key], id)); }
     },
-    stop(){ if(synth) synth.cancel(); who = null; Sound.duck(false); },
-    setMuted(m){ muted = m; if(m) this.stop(); },
+    stop(){ n++; if(src){ try { src.stop(); } catch(e) {} src = null; } who = null; Sound.duck(false); },
+    setMuted(m){ if(m) this.stop(); },
   };
 })();
 
@@ -779,26 +781,26 @@ const scenes = [
   lines:[[2.3,'nasma',"And I'm Breeze. The wind is my friend! 🌪️",2.4]],
   ev:[[0, () => Sound.wind(2.4)], [2.2, () => { Sound.sparkle(); emit(V(3.2,1,2.2), 0x3fe0c8, 25, 4, .6, .6); }], [4.6, () => { Sound.sparkle(); emit(V(0,4,1.5), 0xffd21f, 50, 7, 1, .7, -2); }]] },
 
-{ title:'Doctor Darkness', dur:12, mood:'villain',
+{ title:'Doctor Darkness', dur:14, mood:'villain',
   enter(){ saucer.root.visible = true; },
   run(lt){
     Env.red = sm(seg(lt,0,2))*.85;
     const u = eo(seg(lt,0,4));
     saucer.root.position.set(0, lerp(45,SAUCER.y,u) + Math.sin(lt*2)*.15, lerp(-70,SAUCER.z,u)); villainOnSaucer();
     const v = H.dhalam;
-    if(lt < 4) P_idle(v,lt); else if(lt < 6) P_laugh(v,lt); else { P_idle(v,lt); v.armR.rotation.x = -1.0; }
-    if(lt >= 6 && lt < 9.6){ setBeam(tractor, V(0,SAUCER.y-.7,SAUCER.z), V(0,8.7,SAUCER.z)); tractor.children[0].material.opacity = .4 + Math.sin(lt*20)*.1; } else tractor.visible = false;
-    if(lt < 6) crystal.position.copy(CRYSTAL_HOME);
-    else if(lt < 9.5){ crystal.position.copy(CRYSTAL_HOME).lerp(V(0,SAUCER.y-.5,SAUCER.z), sm(seg(lt,6.3,9.5))); }
-    crystal.visible = lt < 9.5;
-    Env.crystal = lt < 9.5 ? 1 : 0;
-    Env.city = lt < 9.6 ? 1 : 1 - seg(lt,9.6,10.8);
+    if(lt < 4) P_idle(v,lt); else if(lt < 7.6) P_laugh(v,lt); else { P_idle(v,lt); v.armR.rotation.x = -1.0; }
+    if(lt >= 7.6 && lt < 11.2){ setBeam(tractor, V(0,SAUCER.y-.7,SAUCER.z), V(0,8.7,SAUCER.z)); tractor.children[0].material.opacity = .4 + Math.sin(lt*20)*.1; } else tractor.visible = false;
+    if(lt < 7.6) crystal.position.copy(CRYSTAL_HOME);
+    else if(lt < 11.1){ crystal.position.copy(CRYSTAL_HOME).lerp(V(0,SAUCER.y-.5,SAUCER.z), sm(seg(lt,7.9,11.1))); }
+    crystal.visible = lt < 11.1;
+    Env.crystal = lt < 11.1 ? 1 : 0;
+    Env.city = lt < 11.2 ? 1 : 1 - seg(lt,11.2,12.4);
     for(const k of HEROES){ P_lookUp(H[k],lt + H[k].seed); H[k].root.rotation.y = Math.PI; }
-    camPath(lt, [[0,[0,2.2,10],[0,9,-10]], [3.6,[0,3,10],[0,13,-10]], [4,[3.5,17.6,-5],[0,17,-11]], [6,[3.2,17.4,-5.4],[0,16.9,-11]], [6.4,[10,7,10],[0,10,-10]], [9.5,[8,6,12],[0,9,-8]], [12,[0,5,14],[0,6,-4]]]); },
-  lines:[[4.1,'dhalam','Ha ha ha! I am Doctor Darkness!',2.1],[6.3,'dhalam','Your crystal is mine now. Say goodbye to the light!',3.3],[9.8,'narr','And every light in the city went out... 😱',2.2]],
-  ev:[[.1, () => Sound.whoosh()], [4.1, () => Sound.laugh()], [6.2, () => Sound.beam(3.3)], [9.6, () => Sound.powerDown()]] },
+    camPath(lt, [[0,[0,2.2,10],[0,9,-10]], [3.6,[0,3,10],[0,13,-10]], [4,[3.5,17.6,-5],[0,17,-11]], [7.6,[3.2,17.4,-5.4],[0,16.9,-11]], [8,[10,7,10],[0,10,-10]], [11.1,[8,6,12],[0,9,-8]], [14,[0,5,14],[0,6,-4]]]); },
+  lines:[[4.0,'dhalam','Ha ha ha! I am Doctor Darkness!',3.5],[7.6,'dhalam','Your crystal is mine now. Say goodbye to the light!',4],[11.8,'narr','And every light in the city went out... 😱',2.1]],
+  ev:[[.1, () => Sound.whoosh()], [7.8, () => Sound.beam(3.3)], [11.2, () => Sound.powerDown()]] },
 
-{ title:'Darkness Falls', dur:7, mood:'mystery',
+{ title:'Darkness Falls', dur:8.3, mood:'mystery',
   enter(){ saucer.root.visible = true; crystal.visible = false; Object.assign(Env, {city:0, crystal:0, red:.4}); },
   run(lt){
     saucer.root.position.set(0, SAUCER.y + Math.sin(lt*2)*.15, SAUCER.z); villainOnSaucer(); P_idle(H.dhalam,lt);
@@ -843,11 +845,11 @@ const scenes = [
     const bx = () => [b.root.position.x+2, 4.2, b.root.position.z+9.5], bt = () => [b.root.position.x, 1.5, b.root.position.z];
     camPath(lt, [[0,[0,9,18],[0,3,-3]], [2.8,[0,8,16],[-3,1,1]], [3.1,bx,bt], [6.2,bx,bt], [7,[6,2,8],[0,2,-2]], [8.4,[4.5,1.6,6],[0,1.8,-2.5]], [9.3,[13,3.5,10],[8,2,1]], [11.2,[14,4,11],[9,3,2]], [12,[0,4,13.5],[0,2.2,0]], [15,[0,4.2,12],[0,2.3,0]]]); },
   lines:[[.2,'dhalam','Attack, my robots! 🤖',2.2],[2.9,'barq','My turn! ⚡',1.5],[7.1,'sakhr','Boulder quake!',1.6],[9.2,'nasma','Breeze tornado! 🌪️',1.8],[12.1,'barq',"Is that all you've got, Darkness? 😎",2.8]],
-  ev:[[.2, () => Sound.laugh()], [3.0, () => Sound.whoosh()], ...HIT.slice(0,4).map(t => [t, () => { Sound.punch(); shake = .3; }]),
+  ev:[[3.0, () => Sound.whoosh()], ...HIT.slice(0,4).map(t => [t, () => { Sound.punch(); shake = .3; }]),
       [7.3, () => Sound.whoosh()], [8.2, () => { Sound.boom(); shake = 1; ring(V(0,.2,-2.5), 0xffb36b, 12); emit(V(0,.4,-2.5), 0xc9a27a, 50, 7, .9, 1, -4); }],
       [9.5, () => Sound.wind(1.8)], [10, () => Sound.punch()], [10.4, () => Sound.punch()]] },
 
-{ title:'The Final Battle', dur:14, mood:'action',
+{ title:'The Final Battle', dur:14.4, mood:'action',
   enter(){ saucer.root.visible = true; crystal.visible = false; Object.assign(Env, {city:0, crystal:0, red:.4}); },
   run(lt, dt){
     const v = H.dhalam;
@@ -883,7 +885,7 @@ const scenes = [
     if(lt >= 9.6 && lt < 11.5){ const u = seg(lt,9.6,11.5), to = hp('barq').clone().add(V(0,3.6,0)); crystal.visible = true; crystal.position.set(lerp(0,to.x,sm(u)), lerp(SAUCER.y-1,to.y,u) + Math.sin(u*Math.PI)*4, lerp(SAUCER.z,to.z,sm(u))); Env.crystal = .5; }
     else if(lt >= 11.5){ crystal.visible = true; crystal.position.copy(hp('barq')).add(V(0,3.6,0)); Env.crystal = .7; }
     camPath(lt, [[0,[3,18,-6],[0,3,1.5]], [1.4,[3,18,-6],[0,3,1.5]], [1.7,[11,4,2],[0,3,-3]], [3.7,[12,4.5,3],[0,3,-3]], [4,[0,1.2,11],[0,4,0]], [6.2,[0,2,12.5],[0,6.5,-1]], [7.2,[16,9,5],[0,10,-5]], [9.4,[17,9.5,6],[0,10.5,-6]], [9.7,[0,7,17],[0,10,-6]], [11.5,[0,3,9.5],[-3.2,3,2.2]], [14,[-1,2.9,7.5],[-3.2,3,2.2]]]); },
-  lines:[[.2,'dhalam','Enough! Taste my shadow beam! 🌑',2],[2.2,'sakhr','Rock shield! 🛡️',1.7],[4,'nasma','Winds... lift us up!',2],[6.2,'barq','Together, team... Star Strike! ⭐',2.4],[10,'dhalam',"Nooo! I'll be back, heroes!",2.2],[12,'barq','Got the crystal! 💎',2]],
+  lines:[[.2,'dhalam','Enough! Taste my shadow beam! 🌑',2.9],[3.2,'sakhr','Rock shield! 🛡️',1.3],[4.5,'nasma','Winds... lift us up!',1.6],[6.2,'barq','Together, team... Star Strike! ⭐',2.4],[10,'dhalam',"Nooo! I'll be back, heroes!",3.2],[13.3,'barq','Got the crystal! 💎',1.1]],
   ev:[[1.4, () => Sound.beam(2.2,true)], [1.9, () => { Sound.punch(); shake = .4; }], [4, () => Sound.wind(2.5)], [7.4, () => Sound.beam(2.1)],
       [9.5, () => { Sound.boom(true); shake = 1.3; flash(V(0,SAUCER.y,SAUCER.z+3), 500); const p = V(0,SAUCER.y,SAUCER.z); emit(p, 0xff8a3d, 70, 10, 1.1, 1.3, -2); emit(p, 0xffd21f, 40, 8, .9, 1, -2); emit(p, 0xb36bff, 30, 7, 1, 1, -2); ring(p, 0xffd21f, 14, 1); }],
       [9.9, () => Sound.whoosh()], [11.5, () => { Sound.sparkle(); emit(hp('barq').clone().add(V(0,3.6,0)), 0xffd21f, 25, 3, .7, .6); }]] },
@@ -970,7 +972,7 @@ $('eCast').onclick = () => openGallery(0);
 $('eMenu').onclick = toMenu;
 $('bHome').onclick = toMenu;
 $('bRestart').onclick = startEpisode;
-$('bPause').onclick = () => { if(ended) return; paused = !paused; paused ? (Sound.pause(), Voice.stop()) : Sound.resume(); setPauseIcon(); };
+$('bPause').onclick = () => { if(ended) return; paused = !paused; paused ? Sound.pause() : Sound.resume(); setPauseIcon(); };
 $('bNext').onclick = () => { if(cur < scenes.length-1){ Voice.stop(); T = scenes[cur+1].start; if(paused){ paused = false; Sound.resume(); setPauseIcon(); } } };
 $('bMute').onclick = () => { const m = Sound.toggleMute(); Voice.setMuted(m); $('mIcon').setAttribute('d', m ? 'M3 9v6h4l5 5V4L7 9zm16.6 3 2.4-2.4-1.4-1.4-2.4 2.4-2.4-2.4-1.4 1.4 2.4 2.4-2.4 2.4 1.4 1.4 2.4-2.4 2.4 2.4 1.4-1.4z' : 'M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'); };
 $('gPrev').onclick = () => { gi = (gi + GAL.length - 1) % GAL.length; renderGal(); };
