@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>星光少女ヒカリ</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Mochiy+Pop+One&family=M+PLUS+Rounded+1c:wght@500;800&family=Cairo:wght@600;800&display=swap">
+<style>
+/* Layout: full-bleed anime stage; 2D overlays for title cards, speed lines, subtitles, transport */
+:root{
+  --night:#141a3a; --ink:#fff8fc; --muted:#c9c3e6; --glass:rgba(20,16,48,.72); --line:rgba(255,255,255,.18);
+  --sakura:#ff7eb6; --star:#ffd75e; --sky:#7fd3ff; --yomi:#b06bff; --kon:#ff9a3c; --mina:#7ee0a8;
+  --display:'Mochiy Pop One','M PLUS Rounded 1c',system-ui,sans-serif;
+  --body:'M PLUS Rounded 1c','Cairo',system-ui,-apple-system,'Hiragino Sans','Noto Sans JP',sans-serif;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%;margin:0;background:var(--night);color:var(--ink);font-family:var(--body);overflow:hidden;-webkit-tap-highlight-color:transparent}
+#c,#fx{position:fixed;inset:0;width:100%;height:100%;display:block}
+#fx{pointer-events:none}
+#flash{position:fixed;inset:0;pointer-events:none;background:#fff;opacity:0}
+button,select{font-family:var(--body);font-weight:800;color:var(--ink);background:var(--glass);border:1px solid var(--line);border-radius:999px;padding:.65em 1.2em;font-size:1rem;cursor:pointer;touch-action:manipulation}
+button:focus-visible,select:focus-visible{outline:2px solid var(--star);outline-offset:3px}
+button.primary{background:var(--sakura);color:#3a0020;border-color:transparent}
+button:active{transform:scale(.97)}
+
+#menu{position:fixed;inset:0;overflow-y:auto;display:flex;flex-direction:column;justify-content:flex-end;gap:14px;padding:24px 16px calc(20px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,rgba(20,10,40,.95) 0%,rgba(20,10,40,.6) 45%,transparent 72%)}
+#menu h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(2.6rem,12vw,5.2rem);line-height:1.05;color:#fff;text-shadow:0 0 0 #000,3px 3px 0 var(--sakura),6px 6px 0 #6a1d55,0 0 30px rgba(255,126,182,.6)}
+#menu .en{margin:0;color:var(--star);font-weight:800;letter-spacing:.12em;text-transform:uppercase;font-size:.85rem}
+.eps{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px;max-width:900px}
+.ep{display:grid;gap:2px;text-align:start;border-radius:14px;padding:.6em .8em;background:var(--glass)}
+.ep b{color:var(--sakura);font-size:.75rem}
+.ep span{font-size:.95rem;line-height:1.3}
+.ep small{color:var(--muted);font-weight:500;font-size:.75rem}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.row label{color:var(--muted);font-size:.85rem}
+
+#hud{position:fixed;top:0;left:0;right:0;padding:calc(10px + env(safe-area-inset-top,0px)) 16px 0;pointer-events:none}
+#prog{height:4px;border-radius:4px;background:rgba(255,255,255,.15);overflow:hidden}
+#prog i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--sakura),var(--star))}
+#hud .r{display:flex;justify-content:space-between;margin-top:8px;font-size:.8rem}
+#hud .r span{background:var(--glass);padding:.2em .8em;border-radius:999px}
+
+#card{position:fixed;inset:0;display:grid;place-content:center;gap:10px;text-align:center;padding:16px;pointer-events:none;opacity:0;transition:opacity .35s;background:var(--cardbg,transparent)}
+#card.on{opacity:1}
+#card .k{font-family:var(--display);font-size:clamp(1rem,4.5vw,1.6rem);color:var(--star)}
+#card h2{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(2.2rem,10vw,5rem);line-height:1.15;color:#fff;text-shadow:3px 3px 0 var(--sakura),6px 6px 0 rgba(0,0,0,.35);text-wrap:balance}
+#card p{margin:0;font-weight:800;font-size:clamp(1rem,4vw,1.4rem)}
+
+#call{position:fixed;left:0;right:0;top:38%;text-align:center;pointer-events:none;font-family:var(--display);font-size:clamp(2rem,9vw,4.4rem);color:#fff;-webkit-text-stroke:2px #3a0020;text-shadow:4px 4px 0 var(--sakura);opacity:0;transform:scale(1.6) rotate(-4deg);transition:opacity .2s,transform .25s}
+#call.on{opacity:1;transform:scale(1) rotate(-4deg)}
+
+#sub{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));width:min(94vw,820px);text-align:center;pointer-events:none;display:flex;flex-direction:column;align-items:center;gap:4px}
+#sub b{font-size:.8rem;padding:.1em .8em;border-radius:999px;background:var(--who,var(--muted));color:#1a0b1e}
+#sub .ja{background:var(--glass);border:1px solid var(--line);padding:.35em .9em;border-radius:14px;font-size:clamp(1.05rem,4.4vw,1.55rem);font-weight:800;line-height:1.45;text-wrap:balance}
+#sub .tr{font-size:clamp(.85rem,3.4vw,1.1rem);font-weight:600;color:#fff;text-shadow:0 1px 4px #000,0 0 2px #000;text-wrap:balance}
+
+#ctrl{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;gap:10px;padding:10px 16px calc(14px + env(safe-area-inset-bottom,0px))}
+#ctrl button{width:50px;height:50px;padding:0;display:grid;place-items:center}
+#ctrl svg{width:22px;height:22px;fill:currentColor}
+#ctrl #bPause{width:60px;height:60px;background:var(--sakura);color:#3a0020;margin-top:-5px}
+#endS{position:fixed;left:0;right:0;bottom:0;display:flex;justify-content:center;flex-wrap:wrap;gap:10px;padding:0 16px calc(22px + env(safe-area-inset-bottom,0px))}
+#msg{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:var(--muted);background:var(--night)}
+</style>
+<script src="anime/voices.js"></script>
+<script src="anime/episodes.js"></script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
+</head>
+<body>
+<canvas id="c" aria-label="アニメの舞台"></canvas>
+<canvas id="fx"></canvas>
+<div id="flash"></div>
+
+<section id="menu" hidden>
+  <p class="en">Starlight Girl Hikari · 全5話</p>
+  <h1>星光少女ヒカリ</h1>
+  <div class="row">
+    <button id="bStart" class="primary">▶ 第1話から見る</button>
+    <label for="trSel">字幕 / Subtitles</label>
+    <select id="trSel"><option value="ar">日本語 + العربية</option><option value="en">日本語 + English</option><option value="none">日本語のみ</option></select>
+  </div>
+  <div class="eps" id="eps"></div>
+</section>
+
+<header id="hud" hidden><div id="prog"><i></i></div><div class="r"><span id="chip"></span><span id="time"></span></div></header>
+<div id="card"><div class="k"></div><h2></h2><p></p></div>
+<div id="call"></div>
+<div id="sub" hidden><b></b><span class="ja"></span><span class="tr" dir="auto"></span></div>
+
+<nav id="ctrl" hidden>
+  <button id="bHome" aria-label="メニュー"><svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg></button>
+  <button id="bRestart" aria-label="最初から"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg></button>
+  <button id="bPause" aria-label="一時停止"><svg viewBox="0 0 24 24"><path id="pIcon" d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg></button>
+  <button id="bNext" aria-label="次のシーン"><svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zM4 18l9-6-9-6z"/></svg></button>
+  <button id="bMute" aria-label="音"><svg viewBox="0 0 24 24"><path id="mIcon" d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg></button>
+</nav>
+<section id="endS" hidden>
+  <button id="eNext" class="primary">次の話へ ▶</button>
+  <button id="eAgain">↺ もう一度</button>
+  <button id="eMenu">メニュー</button>
+</section>
+<div id="msg">読み込み中…</div>
+
+<script type="module" src="anime/main.js"></script>
+<script>window.addEventListener('error', e => { const m = document.getElementById('msg'); if(m && !m.hidden) m.textContent = 'この端末では再生できません (WebGL が必要です)。'; });</script>
+</body>
+</html>
