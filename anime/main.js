@@ -1,5 +1,6 @@
 // Director: plays episodes shot by shot, with stock anime segments (OP, title card, transformation, preview).
 import * as E from './engine.js';
+import { CFG } from './engine.js';
 import { THREE, V, lerp, sm, eo, ei, seg, clamp, scene, camera, look, composer, emit, ring, flash, lines, petalsOn, makeBeam, setBeam, glow, starTex, setTod, env, tick, clearParticles } from './engine.js';
 import { makeHikari, makeMina, makeYomi, makeKon, makeBeast, Pose, setFace, updateFace, swayTails, reset } from './chars.js';
 import { SPOT, setStage, setNight, tickWorld, darkStar, realmMoon, cloudM } from './world.js';
@@ -9,15 +10,18 @@ const $ = id => document.getElementById(id);
 const C = {hikari:makeHikari(), mina:makeMina(), kon:makeKon(), yomi:makeYomi()};
 const beasts = [makeBeast(1), makeBeast(1), makeBeast(1.9)];
 const ACTORS = [...Object.values(C), ...beasts];
-const beams = {star:makeBeam(0xff9ad0,.35), gold:makeBeam(0xffd75e,.3), dark:makeBeam(0x9a3cff,.4), mina:makeBeam(0x7ee0a8,.25)};
+const BC = {star:0xff9ad0, gold:0xffd75e, dark:0x9a3cff, mina:0x7ee0a8, ...CFG.beams};
+const beams = {star:makeBeam(BC.star,.35), gold:makeBeam(BC.gold,.3), dark:makeBeam(BC.dark,.4), mina:makeBeam(BC.mina,.25), ice:makeBeam(0x9ad8ff,.4)};
 const pendant = glow(0xffe08a, .9, 1, starTex); scene.add(pendant); pendant.visible = false;
 const swirl = new THREE.Group(); scene.add(swirl);
 for(let i=0;i<5;i++){ const m = new THREE.Mesh(new THREE.TorusGeometry(1.1+i*.12,.035,6,48), E.basic([0xff9ad0,0xffd75e,0xffffff,0x9ad8ff,0xff9ad0][i],{transparent:true, opacity:.8, blending:THREE.AdditiveBlending, depthWrite:false})); m.rotation.x = Math.PI/2; swirl.add(m); }
 swirl.visible = false;
 let shake = 0; const WHITE = new THREE.Color(0xffffff);
 
-const WHO = {hikari:['ヒカリ','var(--sakura)'], mina:['ミナ','var(--mina)'], kon:['コン','var(--kon)'], yomi:['ヨミ','var(--yomi)'], narr:['ナレーション','var(--muted)']};
-let trLang = 'ar'; try { trLang = localStorage.getItem('hikari-tr') || 'ar'; } catch(e) {}
+const WHO = {hikari:['ヒカリ','var(--sakura)'], mina:['ミナ','var(--mina)'], kon:['コン','var(--kon)'], yomi:['ヨミ','var(--yomi)'], narr:['ナレーション','var(--muted)'], ...CFG.names};
+const TITLE = {ja:'星光少女ヒカリ', en:'Starlight Girl Hikari', ar:'فتاة ضوء النجوم هيكاري', ...CFG.title};
+const HAIR = C.hikari.o.hair, SUPER_HAIR = CFG.cast?.hikari?.superHair ?? 0xffd0ea, KEY = CFG.key || 'hikari-tr';
+let trLang = 'ar'; try { trLang = localStorage.getItem(CFG.key || 'hikari-tr') || 'ar'; } catch(e) {}
 
 /* ---------- helpers given to the episode scripts ---------- */
 function camPath(lt, keys){
@@ -33,7 +37,7 @@ function call(text){ if(text === callKey) return; callKey = text; const el = $('
 let cardKey = '';
 function card(on, k='', h='', p='', bg=''){ const key = on ? k+h+p+bg : ''; if(key === cardKey) return; cardKey = key; const el = $('card'); if(on){ el.querySelector('.k').textContent = k; el.querySelector('h2').textContent = h; el.querySelector('p').textContent = p; el.style.setProperty('--cardbg', bg || 'transparent'); el.classList.add('on'); } else el.classList.remove('on'); }
 const tr = o => trLang === 'none' ? '' : (o[trLang] || '');
-const A = {THREE, V, lerp, sm, eo, ei, seg, clamp, C, beasts, beams, pendant, swirl, Pose, setFace, swayTails, reset, SPOT, setTod, setNight, emit, ring, flash, lines, petalsOn, setBeam, camPath, place, call, card, tr, Sound, Voice, darkStar, realmMoon, camera, look, env,
+const A = {scene, glow, THREE, V, lerp, sm, eo, ei, seg, clamp, C, beasts, beams, pendant, swirl, Pose, setFace, swayTails, reset, SPOT, setTod, setNight, emit, ring, flash, lines, petalsOn, setBeam, camPath, place, call, card, tr, Sound, Voice, darkStar, realmMoon, camera, look, env,
   shake(v){ shake = Math.max(shake, v); }, hp(k, dy=0){ const h = C[k] || k; return h.root.position.clone().add(V(0,dy,0)); }, hand(k){ const h = C[k]; const v = V(); h.armR.userData.hand.getWorldPosition(v); return v; }, wandTip(){ const v = V(0,.62,0); C.hikari.wand.localToWorld(v); return v; }};
 
 /* ---------- stock segments ---------- */
@@ -43,7 +47,7 @@ A.OP = () => ({ dur:10, stage:'street', tod:'sunset', mood:'op', night:false,
     place('hikari', [r.x, r.y+.3, r.z], .2, 'heroPose', lt); setFace(C.hikari, lt > 2 && lt < 2.3 ? 'blink' : 'happy', 'open');
     place('kon', [r.x+1.3, r.y+.3, r.z+.4], -.3, 'idle', lt); setFace(C.kon, 'happy', 'smile');
     const a = .3 + lt*.12; camPath(lt, [[0,[r.x+Math.sin(.3)*7, r.y+1.5, r.z+Math.cos(.3)*7],[r.x,r.y+2.2,r.z]],[10,[r.x+Math.sin(1.5)*5.5, r.y+2.6, r.z+Math.cos(1.5)*5.5],[r.x,r.y+2.4,r.z]]]);
-    card(lt > 1.2 && lt < 8.8, 'Starlight Girl Hikari', '星光少女ヒカリ', tr({ar:'فتاة ضوء النجوم هيكاري', en:'Starlight Girl Hikari'}));
+    card(lt > 1.2 && lt < 8.8, TITLE.en, TITLE.ja, tr(TITLE));
     if(Math.random() < .3) emit(V(r.x+(Math.random()-.5)*6, r.y+Math.random()*4, r.z+(Math.random()-.5)*4), 0xffd75e, 1, .5, 1.2, .5, 0, 'star'); },
   lines:[], ev:[[.1, () => Sound.sparkle()]] });
 A.TITLE = ep => ({ dur:4, stage:'void', tod:'magic', mood:null,
@@ -56,11 +60,11 @@ A.TRANSFORM = (shout, pose, sup=false) => ({ dur:9.5, stage:'void', tod:'magic',
     if(lt < 1.4){ Pose.hold(h, lt); setFace(h, 'normal', 'shout'); pendant.visible = true; pendant.position.copy(A.hp('hikari', 1.95)).add(V(0,0,.45)); pendant.scale.setScalar(.9 + Math.sin(lt*20)*.2); }
     else if(lt < 6.4){ pendant.visible = false; Pose.wandUp(h, lt); h.armL.rotation.z = 2.4; setFace(h, 'blink', 'smile'); }
     else { Pose[pose](h, lt); setFace(h, 'normal', 'smile'); }
-    if(lt > 4 && h.outfit !== 'hero'){ h.setOutfit('hero'); h.wand.visible = h.tiara.visible = h.tiaraGlow.visible = true; h.wings.visible = sup; if(sup) h.hairMat.color.setHex(0xffd0ea); }
+    if(lt > 4 && h.outfit !== 'hero'){ h.setOutfit('hero'); h.wand.visible = h.tiara.visible = h.tiaraGlow.visible = true; h.wings.visible = sup; if(sup) h.hairMat.color.setHex(SUPER_HAIR); }
     swirl.visible = lt > 1.4 && lt < 6.4; swirl.position.set(0, y + 1.6 + Math.sin(lt*3)*.8, 0); swirl.rotation.y = lt*4; swirl.rotation.z = Math.sin(lt*2)*.4; swirl.scale.setScalar(1 + Math.sin(lt*5)*.15);
     if(dt && lt > 1.4 && lt < 6.4) emit(V((Math.random()-.5)*3, y+Math.random()*3.2, (Math.random()-.5)*3), [0xffd75e,0xff9ad0,0xffffff][Math.floor(Math.random()*3)], 2, 1.5, 1, .55, 0, 'star');
     lines.mode = lt > 1.4 && lt < 6.4 ? 'focus' : null; lines.amount = 1; lines.color = '255,255,255';
-    call(lt > 6.5 ? 'スターライト・チェンジ！' : '');
+    call(lt > 6.5 ? shout.ja : '');
     camPath(lt, [[0,[0,2.2,3.2],[0,2.1,0]], [1.4,[0,2.4,4.5],[0,2.4,0]], [4,[3.5,4,6],[0,3.5,0]], [6.4,[-2,3,7],[0,3,0]], [9.5,[0,2.2,7.5],[0,2,0]]]); },
   lines:[[.2,'hikari',shout.ja,shout.ar,shout.en,1.6]], ev:[[1.4, () => Sound.shine()], [4, () => { flash(1); Sound.sparkle(); ring(V(0,2,0),0xffd75e,8,1,false); }], [6.5, () => Sound.chime()]] });
 A.NEXT = (ep, last=false) => ({ dur:last ? 12 : 10.5, stage:'street', tod:last ? 'dawn' : 'night', mood:'ed', night:!last,
@@ -83,7 +87,7 @@ const show = (id, on) => { $(id).hidden = !on; };
 function hideAll(){
   for(const a of ACTORS){ a.root.visible = false; a.root.scale.setScalar(a.root.userData.s0 ?? (a.root.userData.s0 = a.root.scale.x)); a.root.rotation.set(0,0,0); if(a.talking !== undefined) a.talking = false; }
   for(const b of Object.values(beams)) b.visible = false; pendant.visible = swirl.visible = false;
-  const h = C.hikari; h.wings.visible = false; h.hairMat.color.setHex(0xff8ac2);
+  const h = C.hikari; h.wings.visible = false; h.hairMat.color.setHex(HAIR);
   lines.mode = null; call(''); card(false); clearParticles(); shake = 0; darkStar.visible = true; darkStar.scale.setScalar(1);
   for(const k in C) setFace(C[k], 'normal', 'smile');
 }
@@ -95,8 +99,9 @@ function enterShot(i){
   if(s.mood !== undefined) Sound.setMood(s.mood);
   C.hikari.setOutfit(s.outfit || 'uniform'); const hero = (s.outfit || 'uniform') === 'hero';
   C.hikari.wand.visible = C.hikari.tiara.visible = C.hikari.tiaraGlow.visible = hero;
-  if(s.wings){ C.hikari.wings.visible = true; C.hikari.hairMat.color.setHex(0xffd0ea); }
-  const good = !!s.yomiGood; if(C.yomi.o.evil === good){ C.yomi.o.evil = !good; C.yomi.faces = {}; C.yomi.faceKey = ''; C.yomi.aura.material.color.setHex(good ? 0xff9ad0 : 0x9a3cff); }
+  if(s.wings){ C.hikari.wings.visible = true; C.hikari.hairMat.color.setHex(SUPER_HAIR); }
+  petalsOn.snow = !!s.snow; if(s.snow) petalsOn.tint = 0xffffff;
+  const good = !!s.yomiGood; if(C.yomi.o.evil === good){ C.yomi.o.evil = !good; C.yomi.faces = {}; C.yomi.faceKey = ''; C.yomi.aura.material.color.setHex(good ? 0xff9ad0 : (CFG.cast?.yomi?.aura ?? 0x9a3cff)); }
   s.st = {}; s.enter && s.enter.call(s, s.st);
 }
 function startEp(i){
@@ -123,7 +128,7 @@ function renderMenu(){
 }
 function setPauseIcon(){ $('pIcon').setAttribute('d', paused ? 'M7 4v16l13-8z' : 'M6 4h4v16H6zm8 0h4v16h-4z'); }
 $('trSel').value = trLang;
-$('trSel').onchange = e => { trLang = e.target.value; try { localStorage.setItem('hikari-tr', trLang); } catch(err) {} renderMenu(); };
+$('trSel').onchange = e => { trLang = e.target.value; try { localStorage.setItem(KEY, trLang); } catch(err) {} renderMenu(); };
 $('bStart').onclick = () => startEp(0);
 $('eNext').onclick = () => startEp(Math.min(epI+1, EPISODES.length-1));
 $('eAgain').onclick = () => startEp(epI);

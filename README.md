@@ -13,3 +13,6 @@
   - Japanese voice acting (`anime/voices.js`, recorded neural voices) with Arabic / English subtitles
   - Original music in Japanese scales (koto, shakuhachi, taiko, shamisen) synthesized live, so there is no copyright
   - Needs to be served over http (for example GitHub Pages or `npx http-server`), because it uses ES modules
+- `sakura.html`: **『桜花少女サクラ』 Sakura Blossom Girl**, a one-episode anime special in the Blender-style render
+  - Same anime engine (`anime/`) switched to physically based materials, environment lighting and sculpted 3D eyes via `window.ANIME_CONFIG`
+  - Story in `anime/sakura-episode.js`, Japanese voices in `anime/sakura-voices.js`, Arabic / English subtitles, original Japanese-scale music

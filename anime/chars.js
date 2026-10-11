@@ -1,5 +1,40 @@
 // Anime characters: 3D bodies with hand-drawn 2D faces (canvas textures), like cel-shaded anime.
-import { THREE, V, part, toon, basic, flat, glow, starTex, scene, lerp } from './engine.js';
+import { THREE, V, part, toon, basic, flat, glow, starTex, scene, lerp, BLENDER, CFG, skinMat, glossy } from './engine.js';
+const CC = CFG.cast || {};
+
+/* ---------- 3D sculpted face (Blender style): glossy eyeballs, irises, lids, brows, mouth ---------- */
+function face3d(head, o, R){
+  const F = {eyes:[], brows:[], o};
+  const ink = toon(0x2a1426), irisM = o.evil ? basic(o.eye3 ?? 0x222222) : glossy(o.eye3 ?? 0x222222), white = glossy(0xffffff), dark = glossy(0x160a20);
+  const fox = o.dotEyes, ex = fox ? .14 : .165, ey = fox ? .02 : -.03, ez = R*(fox ? .86 : .9);
+  for(const sd of [-1,1]){
+    const g = new THREE.Group(); g.position.set(ex*sd, ey, ez); head.add(g);
+    if(fox){ part(new THREE.SphereGeometry(.06,20,16), dark, g, [0,0,.0], [1,1.3,.6], null, false); }
+    else {
+      part(new THREE.SphereGeometry(.115,24,18), white, g, [0,0,0], [.85,1.12,.42], null, false);
+      const iris = part(new THREE.SphereGeometry(.08,24,18), irisM, g, [0,-.008,.035], [1,1.22,.45], null, false); g.userData.iris = iris;
+      part(new THREE.SphereGeometry(.04,16,12), dark, g, [0,-.008,.055], [1,1.2,.4], null, false);
+      part(new THREE.TorusGeometry(.098,.014,6,18,Math.PI*.95), ink, g, [0,.012,.03], [1,1.3,1], [0,0,.08*sd], false);
+    }
+    const hl = new THREE.Mesh(new THREE.SphereGeometry(fox ? .016 : .022,10,8), basic(0xffffff)); hl.position.set(.025*sd*-1, fox ? .03 : .045, fox ? .04 : .075); g.add(hl);
+    F.eyes.push(g);
+    if(!fox){ const b = part(new THREE.CapsuleGeometry(.014,.1,4,8), toon(o.brow3 ?? 0x3a2030), head, [ex*sd, .19, R*.9], null, [0,0,Math.PI/2], false); b.userData.sd = sd; F.brows.push(b); }
+    if(o.blush){ const c = new THREE.Mesh(new THREE.CircleGeometry(.06,20), basic(0xff7aa0,{transparent:true, opacity:.35, depthWrite:false})); c.position.set(.25*sd,-.13,R*.86); c.rotation.y = .5*sd; c.scale.y = .55; head.add(c); }
+  }
+  F.smile = part(new THREE.TorusGeometry(fox ? .035 : .05,.011,8,20,Math.PI), toon(0x7a2030), head, [0, fox ? -.12 : -.21, R*(fox ? .93 : .9)], null, [0,0,Math.PI], false);
+  F.open = part(new THREE.SphereGeometry(.05,16,12), glossy(0x5a1020), head, [0, fox ? -.12 : -.22, R*.88], [1,.8,.5], null, false);
+  if(fox) part(new THREE.SphereGeometry(.03,10,8), dark, head, [0,-.06,R*.98], null, null, false);
+  return F;
+}
+function applyFace3d(F, e, m){
+  const sy = e === 'blink' || e === 'happy' ? .12 : e === 'surprised' ? 1.15 : e === 'angry' ? .8 : e === 'sad' ? .85 : 1;
+  for(const g of F.eyes){ g.scale.set(e === 'surprised' ? 1.1 : 1, sy, 1); g.position.y = (F.o.dotEyes ? .02 : -.03) + (e === 'happy' ? .02 : 0); if(g.userData.iris) g.userData.iris.scale.set(e === 'surprised' ? .72 : 1, e === 'surprised' ? .9 : 1.22, .45); }
+  for(const b of F.brows){ const sd = b.userData.sd, ang = e === 'angry' || (F.o.evil && e === 'normal') ? -.45 : e === 'sad' ? .4 : e === 'surprised' ? .1 : 0; b.rotation.z = Math.PI/2 + ang*sd; b.position.y = e === 'surprised' ? .23 : .19; }
+  const open = m === 'open' || m === 'shout' || m === 'o';
+  F.smile.visible = !open; F.open.visible = open;
+  F.smile.rotation.z = m === 'frown' ? 0 : Math.PI; F.smile.scale.set(m === 'smirk' ? .8 : 1, 1, 1); F.smile.rotation.y = m === 'smirk' ? .4 : 0;
+  const k = m === 'shout' ? 1.5 : m === 'o' ? .6 : 1; F.open.scale.set(k*(m === 'o' ? .8 : 1), k*.9, .5);
+}
 
 /* ---------- 2D anime face painter ---------- */
 const FACE = 512;
@@ -84,7 +119,7 @@ export function starShape(r=.2, inner=.45){ const s = new THREE.Shape(); for(let
 
 function makeGirl(o){
   const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
-  const skin = toon(o.skin);
+  const skin = skinMat(o.skin);
   const H = {root, rig, o, faces:{}, faceKey:'', eyes:'normal', mouth:'smile', talking:false, blinkAt:2, outfits:{}, tails:[], seed:Math.random()*6};
   // legs
   H.legs = [1,-1].map(sd => { const p = new THREE.Group(); p.position.set(.12*sd, 1.3, 0); rig.add(p);
@@ -99,8 +134,9 @@ function makeGirl(o){
   const head = new THREE.Group(); head.position.y = 2.62; rig.add(head); H.head = head;
   const R = .44;
   part(new THREE.SphereGeometry(R,40,28), skin, head, [0,0,0], [1,1.04,.98]);
-  H.facePatch = new THREE.Mesh(new THREE.SphereGeometry(R*1.012, 40, 24, Math.PI/2-.82, 1.64, 1.0, 1.32), basic(0xffffff,{transparent:true, depthWrite:false}));
-  H.facePatch.scale.set(1,1.04,.98); H.facePatch.renderOrder = 2; head.add(H.facePatch);
+  if(BLENDER) H.face3d = face3d(head, o, R);
+  else { H.facePatch = new THREE.Mesh(new THREE.SphereGeometry(R*1.012, 40, 24, Math.PI/2-.82, 1.64, 1.0, 1.32), basic(0xffffff,{transparent:true, depthWrite:false}));
+  H.facePatch.scale.set(1,1.04,.98); H.facePatch.renderOrder = 2; head.add(H.facePatch); }
   for(const s of [1,-1]) part(new THREE.SphereGeometry(.07,10,8), skin, head, [R*.96*s,-.04,0], [.6,1,1]);
   // hair
   const hm = toon(o.hair); H.hairMat = hm;
@@ -131,15 +167,15 @@ function uniform(collar, skirt, ribbon){
   };
 }
 function heroDress(g, H){
-  const white = toon(0xfffafc), pink = toon(0xff7eb6), gold = toon(0xffd75e), deep = toon(0xe0458e);
+  const hc = H.o.hero || {}, white = toon(hc.white ?? 0xfffafc), pink = toon(hc.main ?? 0xff7eb6), gold = toon(hc.gold ?? 0xffd75e), deep = toon(hc.deep ?? 0xe0458e);
   part(new THREE.CapsuleGeometry(.22,.45,8,18), white, g, [0,1.83,0], [1.08,1,.9]);
   part(new THREE.CylinderGeometry(.235,.25,.3,18), pink, g, [0,1.62,0]);
   part(new THREE.TorusGeometry(.245,.035,8,24), gold, g, [0,1.47,0], null, [Math.PI/2,0,0], false);
-  bow(0xe0458e, g, [0,2.02,.24], 1.8);
+  bow(hc.deep ?? 0xe0458e, g, [0,2.02,.24], 1.8);
   part(new THREE.SphereGeometry(.05,10,8), gold, g, [0,2.02,.3]);
   part(flat(new THREE.CylinderGeometry(.27,.6,.42,16,1,true)), pink, g, [0,1.26,0]).material.side = THREE.DoubleSide;
   part(flat(new THREE.CylinderGeometry(.5,.72,.25,20,1,true)), white, g, [0,1.0,0]).material.side = THREE.DoubleSide;
-  bow(0xff7eb6, g, [0,1.5,-.26], 2.6);
+  bow(hc.main ?? 0xff7eb6, g, [0,1.5,-.26], 2.6);
   for(const arm of H.arms){ part(new THREE.SphereGeometry(.13,16,12), pink, arm, [0,-.04,0]); part(new THREE.CapsuleGeometry(.075,.25,6,12), white, arm, [0,-.55,0]); part(new THREE.TorusGeometry(.08,.025,6,16), gold, arm, [0,-.42,0], null, [Math.PI/2,0,0], false); }
   for(const leg of H.legs){ part(new THREE.CapsuleGeometry(.105,.5,6,12), white, leg, [0,-.92,0]); part(new THREE.TorusGeometry(.11,.03,6,16), deep, leg, [0,-.66,0], null, [Math.PI/2,0,0], false); part(new THREE.SphereGeometry(.13,14,10), pink, leg, [0,-1.28,.05], [1,.7,1.5]); }
   const tiara = part(starShape(.13), gold, H.head, [0,.4,.33], null, [-.4,0,0], false); tiara.visible = false; H.tiara = tiara;
@@ -166,53 +202,56 @@ function twinTails(head, hm, H){
     part(new THREE.CapsuleGeometry(.15,.5,8,14), hm, t, [0,-.42,0], [1,1,.85]);
     part(new THREE.ConeGeometry(.15,.75,12), hm, t, [0,-1.0,0], null, [Math.PI,0,0]);
     t.rotation.z = .35*s; t.userData.s = s; H.tails.push(t);
-    bow(0xe0458e, p, [0,.06,.08*0+.02], .9).rotation.y = s*.6;
+    bow(H.o.tailBow ?? 0xe0458e, p, [0,.06,.08*0+.02], .9).rotation.y = s*.6;
   }
 }
 
 /* ---------- cast ---------- */
 export function makeHikari(){
-  return makeGirl({skin:0xffe2d2, hair:0xff8ac2, eye:'#ff5fa8', eyeDark:'#7a1f5a', eyeLight:'#ffc1e0', brow:'#c9407e', blush:true, lashes:true,
-    hairExtra:twinTails, outfits:{uniform:uniform(0x2a3a7a, 0x2a3a7a, 0xe0304a), hero:heroDress}});
+  const c = {skin:0xffe2d2, hair:0xff8ac2, eye:'#ff5fa8', eyeDark:'#7a1f5a', eyeLight:'#ffc1e0', eye3:0xff5fa8, brow:'#c9407e', brow3:0xc9407e, blush:true, lashes:true, collar:0x2a3a7a, ribbon:0xe0304a, ...CC.hikari};
+  return makeGirl({...c, hairExtra:twinTails, outfits:{uniform:uniform(c.collar, c.collar, c.ribbon), hero:heroDress}});
 }
 export function makeMina(){
-  return makeGirl({skin:0xffe0c8, hair:0x6a4028, eye:'#3fb97a', eyeDark:'#13502e', eyeLight:'#a8f0c8', brow:'#4a2a18', blush:true, lashes:true, hairBack:2.2, sideLock:.45,
+  return makeGirl({skin:0xffe0c8, hair:0x6a4028, eye:'#3fb97a', eyeDark:'#13502e', eyeLight:'#a8f0c8', eye3:0x3fb97a, brow:'#4a2a18', blush:true, lashes:true, hairBack:2.2, sideLock:.45, ...CC.mina,
     bangs:[[-.32,.12],[-.18,0],[-.04,.04],[.1,0],[.26,.08]],
-    hairExtra:(head) => { part(starShape(.07), toon(0x7ee0a8), head, [.3,.3,.3], null, [0,.5,.3], false); },
-    outfits:{uniform:uniform(0x2a3a7a, 0x2a3a7a, 0x2aa86a)}});
+    hairExtra:(head) => { part(starShape(.07), toon(CC.mina?.clip ?? 0x7ee0a8), head, [.3,.3,.3], null, [0,.5,.3], false); },
+    outfits:{uniform:uniform(CC.mina?.collar ?? 0x2a3a7a, CC.mina?.collar ?? 0x2a3a7a, CC.mina?.ribbon ?? 0x2aa86a)}});
 }
 export function makeYomi(){
-  return makeGirl({skin:0xeadcf4, hair:0x2a1240, eye:'#ff3060', eyeDark:'#5a0018', eyeLight:'#ffb0c0', brow:'#2a1240', evil:true, lashes:true, hairBack:2.6, sideLock:1.1,
+  const y = {dress:0x3a1660, dress2:0x1a0a2e, trim:0x9a7cff, aura:0x9a3cff, gem:0xff3060, ...CC.yomi};
+  return makeGirl({skin:0xeadcf4, hair:0x2a1240, eye:'#ff3060', eyeDark:'#5a0018', eyeLight:'#ffb0c0', eye3:0xff3060, brow:'#2a1240', evil:true, lashes:true, hairBack:2.6, sideLock:1.1, ...CC.yomi,
     hairExtra:(head, hm) => {
       part(new THREE.CapsuleGeometry(.36,1.5,8,16), hm, head, [0,-.95,-.28], [1.05,1,.45]);
-      const gold = toon(0x9a7cff);
+      const gold = toon(y.trim);
       part(new THREE.TorusGeometry(.38,.03,6,24), gold, head, [0,.38,-.02], null, [Math.PI/2-.1,0,0], false);
       for(let i=0;i<5;i++){ const a = (i-2)*.38; part(new THREE.ConeGeometry(.045,.28,6), gold, head, [Math.sin(a)*.37,.5,Math.cos(a)*.35-.02], null, [.15,0,-a*.4], false); }
-      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(.06), basic(0xff3060)); gem.position.set(0,.5,.36); head.add(gem);
+      const gem = new THREE.Mesh(new THREE.OctahedronGeometry(.06), basic(y.gem)); gem.position.set(0,.5,.36); head.add(gem);
     },
     outfits:{dress:(g, H) => {
-      const d = toon(0x3a1660), d2 = toon(0x1a0a2e), trim = toon(0x9a7cff);
+      const d = toon(y.dress), d2 = toon(y.dress2), trim = toon(y.trim);
       part(new THREE.CapsuleGeometry(.22,.45,8,18), d, g, [0,1.83,0], [1.05,1,.9]);
       part(flat(new THREE.CylinderGeometry(.26,1.0,1.75,18,1,true)), d2, g, [0,.9,0]).material.side = THREE.DoubleSide;
       part(new THREE.TorusGeometry(.27,.03,6,24), trim, g, [0,1.6,0], null, [Math.PI/2,0,0], false);
       for(const s of [1,-1]) part(new THREE.ConeGeometry(.12,.45,6), d2, g, [.28*s,2.32,-.08], null, [0,0,-.5*s]);
       for(const arm of H.arms) part(new THREE.CapsuleGeometry(.08,.5,6,12), d2, arm, [0,-.38,0]);
-      const aura = glow(0x9a3cff, 4.5, .35); aura.position.y = 1.6; g.add(aura); H.aura = aura;
+      const aura = glow(y.aura, 4.5, .35); aura.position.y = 1.6; g.add(aura); H.aura = aura;
     }}});
 }
 export function makeKon(){
   const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
-  const fur = toon(0xff9a3c), white = toon(0xfff4e8), dark = toon(0x5a2a10);
+  const kc = {fur:0xff9a3c, ear:0x5a2a10, mark:0xffd75e, ...CC.kon};
+  const fur = toon(kc.fur), white = toon(0xfff4e8), dark = toon(kc.ear);
   const H = {root, rig, o:{dotEyes:true, skin:'#ff9a3c'}, faces:{}, faceKey:'', eyes:'normal', mouth:'smile', talking:false, blinkAt:1, seed:1, fox:true};
   part(new THREE.SphereGeometry(.28,24,18), fur, rig, [0,.3,0], [1,.95,1.1]);
   part(new THREE.SphereGeometry(.18,18,14), white, rig, [0,.26,.14], [1,1,.8], null, false);
   const head = new THREE.Group(); head.position.y = .72; rig.add(head); H.head = head;
   part(new THREE.SphereGeometry(.3,28,20), fur, head, [0,0,0], [1.1,1,1]);
   part(new THREE.SphereGeometry(.13,16,12), white, head, [0,-.08,.22], [1.2,.8,1]);
-  H.facePatch = new THREE.Mesh(new THREE.SphereGeometry(.3*1.03, 32, 20, Math.PI/2-.9, 1.8, 1.0, 1.4), basic(0xffffff,{transparent:true, depthWrite:false}));
-  H.facePatch.scale.set(1.1,1,1); H.facePatch.renderOrder = 2; head.add(H.facePatch);
+  if(BLENDER) H.face3d = face3d(head, H.o, .3);
+  else { H.facePatch = new THREE.Mesh(new THREE.SphereGeometry(.3*1.03, 32, 20, Math.PI/2-.9, 1.8, 1.0, 1.4), basic(0xffffff,{transparent:true, depthWrite:false}));
+  H.facePatch.scale.set(1.1,1,1); H.facePatch.renderOrder = 2; head.add(H.facePatch); }
   for(const s of [1,-1]){ const e = part(new THREE.ConeGeometry(.12,.32,4), fur, head, [.17*s,.27,0], null, [0,0,-.35*s]); part(new THREE.ConeGeometry(.06,.18,4), dark, e, [0,.05,.035], null, null, false); }
-  const star = new THREE.Mesh(starShape(.06), basic(0xffd75e)); star.position.set(0,.18,.27); head.add(star);
+  const star = new THREE.Mesh(starShape(.06), basic(kc.mark)); star.position.set(0,.18,.27); head.add(star);
   H.tail = new THREE.Group(); H.tail.position.set(0,.3,-.25); rig.add(H.tail);
   part(new THREE.SphereGeometry(.2,18,14), fur, H.tail, [0,.25,-.2], [1,1.6,1]);
   part(new THREE.SphereGeometry(.12,14,10), white, H.tail, [0,.55,-.32], [1,1.3,1]);
@@ -223,12 +262,13 @@ export function makeKon(){
 }
 export function makeBeast(scale=1){
   const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
-  const m = toon(0x2a0f3e), m2 = toon(0x16061f);
+  const bc = {body:0x2a0f3e, spike:0x16061f, eye:0xff2050, aura:0x8a2aff, ...CFG.beast};
+  const m = toon(bc.body), m2 = toon(bc.spike);
   const body = part(new THREE.SphereGeometry(1,28,20), m, rig, [0,1.1,0], [1.1,1,1]);
   for(let i=0;i<9;i++){ const a = i/9*Math.PI*2; part(new THREE.ConeGeometry(.18,.7,6), m2, rig, [Math.cos(a)*.7,1.75+Math.sin(i)*.1,Math.sin(a)*.5-.2], null, [Math.sin(a)*.6,0,-Math.cos(a)*.6]); }
-  for(const s of [1,-1]){ part(new THREE.CapsuleGeometry(.2,.5,6,10), m2, rig, [.75*s,.5,.2], null, [0,0,.3*s]); const e = new THREE.Mesh(new THREE.SphereGeometry(.16,12,10), basic(0xff2050)); e.position.set(.35*s,1.35,.86); e.scale.set(1.3,.7,.5); e.rotation.z = -.3*s; rig.add(e); const eg = glow(0xff2050,.9,.9); eg.position.copy(e.position).add(V(0,0,.1)); rig.add(eg); }
-  const mouthM = new THREE.Mesh(new THREE.TorusGeometry(.35,.06,6,16,Math.PI), basic(0xff2050)); mouthM.position.set(0,.85,.9); mouthM.rotation.z = Math.PI; rig.add(mouthM);
-  const aura = glow(0x8a2aff, 5, .35); aura.position.y = 1.2; rig.add(aura);
+  for(const s of [1,-1]){ part(new THREE.CapsuleGeometry(.2,.5,6,10), m2, rig, [.75*s,.5,.2], null, [0,0,.3*s]); const e = new THREE.Mesh(new THREE.SphereGeometry(.16,12,10), basic(bc.eye)); e.position.set(.35*s,1.35,.86); e.scale.set(1.3,.7,.5); e.rotation.z = -.3*s; rig.add(e); const eg = glow(bc.eye,.9,.9); eg.position.copy(e.position).add(V(0,0,.1)); rig.add(eg); }
+  const mouthM = new THREE.Mesh(new THREE.TorusGeometry(.35,.06,6,16,Math.PI), basic(bc.eye)); mouthM.position.set(0,.85,.9); mouthM.rotation.z = Math.PI; rig.add(mouthM);
+  const aura = glow(bc.aura, 5, .35); aura.position.y = 1.2; rig.add(aura);
   root.scale.setScalar(scale); scene.add(root);
   return {root, rig, body, beast:true, seed:Math.random()*6};
 }
@@ -236,13 +276,15 @@ export function makeBeast(scale=1){
 /* ---------- faces & poses ---------- */
 export function setFace(H, eyes, m){ if(eyes) H.eyes = eyes; if(m) H.mouth = m; }
 export function updateFace(H, t){
-  if(!H.facePatch) return;
+  if(!H.facePatch && !H.face3d) return;
   let e = H.eyes, m = H.mouth;
   if(e === 'normal' || e === 'angry' || e === 'surprised'){ if(t > H.blinkAt){ e = 'blink'; if(t > H.blinkAt + .12) H.blinkAt = t + 2 + Math.random()*3; } }
   if(H.talking) m = Math.sin(t*14) > 0 ? (H.mouth === 'shout' ? 'shout' : 'open') : (H.mouth === 'open' || H.mouth === 'shout' ? 'o' : H.mouth);
   const key = e + '|' + m;
   if(key === H.faceKey) return;
-  H.faceKey = key; H.faces[key] ||= paintFace(H.o, e, m);
+  H.faceKey = key;
+  if(H.face3d){ applyFace3d(H.face3d, e, m); return; }
+  H.faces[key] ||= paintFace(H.o, e, m);
   H.facePatch.material.map = H.faces[key]; H.facePatch.material.needsUpdate = true;
 }
 export function reset(H){

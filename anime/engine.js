@@ -4,6 +4,10 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+// Optional page config: window.ANIME_CONFIG = {style:'blender', ...} switches to a Blender-style PBR render.
+export const CFG = window.ANIME_CONFIG || {};
+export const BLENDER = CFG.style === 'blender';
 export { THREE };
 
 export const V = (x=0,y=0,z=0) => new THREE.Vector3(x,y,z);
@@ -21,21 +25,27 @@ export const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPr
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-renderer.toneMapping = THREE.NoToneMapping;
+renderer.toneMapping = BLENDER ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
+renderer.toneMappingExposure = BLENDER ? .95 : 1;
 export const scene = new THREE.Scene();
 scene.fog = new THREE.Fog(0xffd9e8, 60, 220);
 export const camera = new THREE.PerspectiveCamera(45, 1, 0.1, 600);
 export const look = V();
 export const composer = new EffectComposer(renderer);
 composer.addPass(new RenderPass(scene, camera));
-export const bloom = new UnrealBloomPass(new THREE.Vector2(256,256), .55, .45, .86);
+export const bloom = new UnrealBloomPass(new THREE.Vector2(256,256), BLENDER ? .45 : .55, BLENDER ? .5 : .45, BLENDER ? .9 : .86);
+if(BLENDER){ const pm = new THREE.PMREMGenerator(renderer); scene.environment = pm.fromScene(new RoomEnvironment(), .04).texture; scene.environmentIntensity = .45; }
 composer.addPass(bloom);
 composer.addPass(new OutputPass());
 
 // ---- cel shading: two hard tones like hand-painted anime ----
 const grad = new THREE.DataTexture(new Uint8Array([150,150,150,255, 150,150,150,255, 255,255,255,255, 255,255,255,255]), 4, 1);
 grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
-export const toon = (color, o={}) => new THREE.MeshToonMaterial({color, gradientMap:grad, ...o});
+export const toon = (color, o={}) => BLENDER
+  ? new THREE.MeshPhysicalMaterial({color, roughness:.45, metalness:0, clearcoat:.3, clearcoatRoughness:.35, ...o})
+  : new THREE.MeshToonMaterial({color, gradientMap:grad, ...o});
+export const skinMat = color => BLENDER ? new THREE.MeshPhysicalMaterial({color, roughness:.55, sheen:.6, sheenColor:new THREE.Color(0xff9c80), sheenRoughness:.45}) : toon(color);
+export const glossy = color => BLENDER ? new THREE.MeshPhysicalMaterial({color, roughness:.06, clearcoat:1, clearcoatRoughness:.04}) : new THREE.MeshBasicMaterial({color});
 export const basic = (color, o={}) => new THREE.MeshBasicMaterial({color, ...o});
 export const outlineMat = new THREE.ShaderMaterial({
   uniforms:{thick:{value:.022}},
@@ -47,7 +57,7 @@ export function part(geo, mat, parent, p=[0,0,0], s=null, r=null, outline=true){
   const m = new THREE.Mesh(geo, mat);
   m.position.set(...p); if(s) m.scale.set(...s); if(r) m.rotation.set(...r);
   m.castShadow = true; parent.add(m);
-  if(outline){ const o = new THREE.Mesh(geo, outlineMat); o.userData.outline = true; m.add(o); }
+  if(outline && !BLENDER){ const o = new THREE.Mesh(geo, outlineMat); o.userData.outline = true; m.add(o); }
   return m;
 }
 export const flat = g => { g = g.toNonIndexed(); g.computeVertexNormals(); return g; };
@@ -82,6 +92,7 @@ export const TOD = {
   night:  {top:0x0a0f35, mid:0x2a3a7a, bot:0x101530, fog:0x1d2550, sun:0x9ab0ff, si:1.1, hi:.75, stars:1},
   dark:   {top:0x12001f, mid:0x5a1050, bot:0x14001c, fog:0x2a0830, sun:0xd08aff, si:.9,  hi:.6,  stars:.4},
   magic:  {top:0xff7eb6, mid:0xffe1f0, bot:0xb48cff, fog:0xffd1ea, sun:0xffffff, si:2.2, hi:1.4,  stars:.6},
+  snow:   {top:0x56689a, mid:0xc8d6ea, bot:0x9aa8c4, fog:0xc8d4e8, sun:0xe0ecff, si:1.5, hi:1.0,  stars:0},
   dawn:   {top:0x7ab8ff, mid:0xffd2a8, bot:0xc0b0d0, fog:0xffe0c8, sun:0xffe2b0, si:2.2, hi:1.15, stars:0},
 };
 const cA = new THREE.Color(), cB = new THREE.Color();
@@ -94,7 +105,8 @@ export function applyTod(){
   const k = sm(env.k), F = TOD[env.from], T = TOD[env.to];
   sky.material.uniforms.top.value.copy(mixC('top',k)); sky.material.uniforms.mid.value.copy(mixC('mid',k)); sky.material.uniforms.bot.value.copy(mixC('bot',k));
   scene.fog.color.copy(mixC('fog',k)); sun.color.copy(mixC('sun',k));
-  sun.intensity = lerp(F.si, T.si, k); hemi.intensity = lerp(F.hi, T.hi, k);
+  sun.intensity = lerp(F.si, T.si, k)*(BLENDER ? .9 : 1); hemi.intensity = lerp(F.hi, T.hi, k)*(BLENDER ? .55 : 1);
+  if(BLENDER){ scene.environmentIntensity = .18 + .22*clamp(lerp(F.si, T.si, k)/2.4); scene.fog.near = 90; scene.fog.far = 320; }
   stars.material.opacity = lerp(F.stars, T.stars, k);
   sky.position.copy(camera.position); stars.position.copy(camera.position);
 }
@@ -130,12 +142,13 @@ function updateParticles(dt){
 // falling sakura petals around the camera
 const petals = [];
 for(let i=0;i<70;i++){ const s = new THREE.Sprite(new THREE.SpriteMaterial({map:petalTex, transparent:true, depthWrite:false})); s.scale.set(.35,.35,1); s.userData = {o:V((rnd()-.5)*40, rnd()*18, (rnd()-.5)*40), sp:.6+rnd()*.8, ph:rnd()*9}; scene.add(s); petals.push(s); }
-export const petalsOn = {v:true, tint:0xffffff};
+export const petalsOn = {v:true, tint:0xffffff, snow:false};
 function updatePetals(t){
   for(const s of petals){ s.visible = petalsOn.v; if(!s.visible) continue; const u = s.userData;
     const y = 18 - ((t*u.sp + u.ph*3) % 18);
     s.position.set(camera.position.x + u.o.x + Math.sin(t*.8+u.ph)*1.5, y, camera.position.z + u.o.z - 8);
-    s.material.rotation = t*u.sp*2 + u.ph; s.material.color.setHex(petalsOn.tint); }
+    s.material.rotation = t*u.sp*2 + u.ph; s.material.color.setHex(petalsOn.tint);
+    const map = petalsOn.snow ? dotTex : petalTex; if(s.material.map !== map){ s.material.map = map; s.material.needsUpdate = true; } }
 }
 const rings = Array.from({length:6}, () => { const m = new THREE.Mesh(new THREE.RingGeometry(.85,1,48), basic(0xffffff,{transparent:true, blending:THREE.AdditiveBlending, depthWrite:false, side:THREE.DoubleSide})); m.visible = false; scene.add(m); return {m, t:1, dur:1, r:1}; });
 let ri = 0;
