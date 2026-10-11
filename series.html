@@ -1,19 +1,19 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>فريق النجوم</title>
+<title>Star Squad</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&family=Lalezar&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;800&family=Bangers&display=swap">
 <style>
 /* Layout: full-bleed 3D stage; cinema overlays — progress on top, subtitles + transport at the bottom */
 :root{
   --night:#0b1236; --ink:#f6f3ff; --muted:#aab2dc; --glass:rgba(9,11,34,.74); --line:rgba(255,255,255,.16);
   --gold:#ffd21f; --ember:#ff8a3d; --teal:#3fe0c8; --villain:#ff4d6d; --narr:#c9d1ff;
-  --display:'Lalezar','Cairo',system-ui,sans-serif;
-  --body:'Cairo',system-ui,-apple-system,'Segoe UI',Tahoma,sans-serif;
+  --display:'Bangers','Impact',system-ui,sans-serif;
+  --body:'Nunito',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
   color-scheme:dark;
 }
 *{box-sizing:border-box}
@@ -28,7 +28,7 @@ button:active{transform:scale(.97)}
 
 #menu{position:fixed;inset:0;display:flex;flex-direction:column;justify-content:flex-end;gap:18px;padding:24px 20px calc(28px + env(safe-area-inset-bottom,0px));background:linear-gradient(to top,rgba(6,8,28,.92) 0%,rgba(6,8,28,.55) 38%,transparent 65%)}
 #menu .eyebrow{margin:0;color:var(--muted);letter-spacing:.04em;font-size:.95rem}
-#menu h1{margin:0;font-family:var(--display);font-weight:400;font-size:clamp(3.2rem,15vw,6.5rem);line-height:1;color:var(--gold);text-shadow:0 4px 0 #8a4a00,0 0 30px rgba(255,210,31,.35);text-wrap:balance}
+#menu h1{margin:0;font-family:var(--display);font-weight:400;letter-spacing:.03em;font-size:clamp(3.2rem,15vw,6.5rem);line-height:1;color:var(--gold);text-shadow:0 4px 0 #8a4a00,0 0 30px rgba(255,210,31,.35);text-wrap:balance}
 #menu .ep{margin:4px 0 0;font-size:1.15rem}
 #menu .ep b{color:var(--teal)}
 .cast{display:flex;flex-wrap:wrap;gap:8px}
@@ -75,26 +75,26 @@ button:active{transform:scale(.97)}
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
 </head>
 <body>
-<canvas id="c" aria-label="مدينة النجوم ثلاثية الأبعاد"></canvas>
+<canvas id="c" aria-label="3D Star City"></canvas>
 <div id="vig"></div>
 
 <section id="menu" hidden>
   <div>
-    <p class="eyebrow">مسلسل كرتوني ثلاثي الأبعاد</p>
-    <h1>فريق النجوم</h1>
-    <p class="ep">الحلقة الأولى · <b>كريستالة النور</b></p>
+    <p class="eyebrow">A 3D animated superhero series</p>
+    <h1>Star Squad</h1>
+    <p class="ep">Episode 1 · <b>The Crystal of Light</b></p>
   </div>
   <div class="cast">
-    <span style="--c:var(--gold)">برق ⚡</span>
-    <span style="--c:var(--ember)">صخر 🪨</span>
-    <span style="--c:var(--teal)">نسمة 🌪️</span>
-    <span style="--c:var(--villain)">الدكتور ظلام</span>
+    <span style="--c:var(--gold)">Bolt ⚡</span>
+    <span style="--c:var(--ember)">Boulder 🪨</span>
+    <span style="--c:var(--teal)">Breeze 🌪️</span>
+    <span style="--c:var(--villain)">Doctor Darkness</span>
   </div>
   <div class="actions">
-    <button id="bPlay" class="primary">▶ شاهد الحلقة</button>
-    <button id="bCast">تعرّف على الأبطال</button>
+    <button id="bPlay" class="primary">▶ Watch the episode</button>
+    <button id="bCast">Meet the heroes</button>
   </div>
-  <p class="hint">شغّل الصوت 🔊 · مدة الحلقة دقيقة ونصف تقريباً</p>
+  <p class="hint">Turn your sound on 🔊 · full voice acting · about 1½ minutes</p>
 </section>
 
 <header id="hud" hidden>
@@ -106,11 +106,11 @@ button:active{transform:scale(.97)}
 <div id="sub" hidden><b></b><span></span></div>
 
 <nav id="ctrl" hidden>
-  <button id="bHome" aria-label="القائمة"><svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg></button>
-  <button id="bRestart" aria-label="من البداية"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg></button>
-  <button id="bPause" aria-label="إيقاف مؤقت"><svg viewBox="0 0 24 24"><path id="pIcon" d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg></button>
-  <button id="bNext" aria-label="المشهد التالي"><svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zM4 18l9-6-9-6z" transform="matrix(-1 0 0 1 24 0)"/></svg></button>
-  <button id="bMute" aria-label="الصوت"><svg viewBox="0 0 24 24"><path id="mIcon" d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg></button>
+  <button id="bHome" aria-label="Menu"><svg viewBox="0 0 24 24"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg></button>
+  <button id="bRestart" aria-label="Restart"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a6 6 0 1 1-6 6H4a8 8 0 1 0 8-8z"/></svg></button>
+  <button id="bPause" aria-label="Pause"><svg viewBox="0 0 24 24"><path id="pIcon" d="M6 4h4v16H6zm8 0h4v16h-4z"/></svg></button>
+  <button id="bNext" aria-label="Next scene"><svg viewBox="0 0 24 24"><path d="M18 6h-2v12h2zM4 18l9-6-9-6z"/></svg></button>
+  <button id="bMute" aria-label="Sound"><svg viewBox="0 0 24 24"><path id="mIcon" d="M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg></button>
 </nav>
 
 <section id="gal" hidden>
@@ -120,20 +120,20 @@ button:active{transform:scale(.97)}
     <p class="bio" id="gBio"></p>
     <div class="stats" id="gStats"></div>
     <div class="nav">
-      <button id="gPrev">→ السابق</button>
-      <button id="gBack">القائمة</button>
-      <button id="gNext">التالي ←</button>
+      <button id="gPrev">← Previous</button>
+      <button id="gBack">Menu</button>
+      <button id="gNext">Next →</button>
     </div>
   </div>
 </section>
 
 <section id="endS" hidden>
-  <button id="eAgain" class="primary">↺ شاهد مرة أخرى</button>
-  <button id="eCast">تعرّف على الأبطال</button>
-  <button id="eMenu">القائمة</button>
+  <button id="eAgain" class="primary">↺ Watch again</button>
+  <button id="eCast">Meet the heroes</button>
+  <button id="eMenu">Menu</button>
 </section>
 
-<div id="msg">جاري تحميل مدينة النجوم…</div>
+<div id="msg">Loading Star City…</div>
 
 <script type="module">
 import * as THREE from 'three';
@@ -622,6 +622,7 @@ const Sound = (() => {
     setMood(m){ if(m === mood && pending === undefined) return; pending = m; },
     pause(){ ctx && ctx.suspend(); }, resume(){ ctx && ctx.resume(); },
     toggleMute(){ muted = !muted; if(master) master.gain.value = muted ? 0 : .85; return muted; },
+    duck(on){ if(music) music.gain.setTargetAtTime(on ? .2 : .5, ctx.currentTime, .15); },
     whoosh(){ if(!ctx) return; const t = ctx.currentTime, n = nz(t,.7,'bandpass',300,.6,1.2); n.f.frequency.exponentialRampToValueAtTime(3000,t+.3); n.f.frequency.exponentialRampToValueAtTime(500,t+.7); },
     zap(){ if(!ctx) return; const t = ctx.currentTime, o = voice('sawtooth',1400,t,.22,.12,.005,.05,6000,sfx); o.frequency.exponentialRampToValueAtTime(160,t+.25); },
     punch(){ if(!ctx) return; const t = ctx.currentTime; kick(t,.8,sfx); nz(t,.12,'lowpass',1400,.5); },
@@ -637,8 +638,42 @@ const Sound = (() => {
   return api;
 })();
 
+/* ================= voices: every line is spoken (Web Speech API, built into the device) ================= */
+const Voice = (() => {
+  const synth = window.speechSynthesis;
+  let voices = [], muted = false, who = null, n = 0;
+  const load = () => { voices = synth ? synth.getVoices().filter(v => /^en/i.test(v.lang)) : []; };
+  if(synth){ load(); synth.addEventListener?.('voiceschanged', load); }
+  const FEMALE = /female|samantha|victoria|karen|moira|tessa|fiona|zira|aria|jenny|susan|serena|allison|ava|libby|sonia|natasha|michelle/i;
+  const MALE = /\bmale|daniel|alex|fred|david|mark|guy|ryan|george|aaron|arthur|oliver|thomas|rishi|christopher|eric|james/i;
+  const pick = (kind, i) => {
+    const f = voices.filter(v => FEMALE.test(v.name)), m = voices.filter(v => MALE.test(v.name) && !/female/i.test(v.name));
+    const list = kind === 'f' ? f : m;
+    return list.length ? list[i % list.length] : (voices[0] || null);
+  };
+  // each character: voice gender, which voice, pitch (0-2), speed
+  const CAST = {narr:['m',0,1,.95], barq:['m',1,1.55,1.15], sakhr:['m',2,.55,.88], nasma:['f',0,1.25,1.05], dhalam:['m',0,.2,.82]};
+  const clean = t => t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}\u{2B50}\u{FE0F}]/gu, '').trim();
+  return {
+    get who(){ return who; },
+    get active(){ return !!synth && voices.length > 0 && !muted; },
+    unlock(){ if(synth){ load(); const u = new SpeechSynthesisUtterance(''); u.volume = 0; synth.speak(u); } },
+    say(k, text){
+      if(!synth || muted) return;
+      const [g, i, pitch, rate] = CAST[k], u = new SpeechSynthesisUtterance(clean(text)), id = ++n;
+      u.lang = 'en-US'; const v = pick(g, i); if(v) u.voice = v;
+      u.pitch = pitch; u.rate = rate; u.volume = 1;
+      u.onstart = () => { who = k; Sound.duck(true); };
+      u.onend = u.onerror = () => { if(id === n || !synth.speaking){ who = null; Sound.duck(false); } };
+      synth.speak(u);
+    },
+    stop(){ if(synth) synth.cancel(); who = null; Sound.duck(false); },
+    setMuted(m){ muted = m; if(m) this.stop(); },
+  };
+})();
+
 /* ================= state & UI ================= */
-const WHO = {narr:['الراوي','var(--narr)'], barq:['برق','var(--gold)'], sakhr:['صخر','var(--ember)'], nasma:['نسمة','var(--teal)'], dhalam:['الدكتور ظلام','var(--villain)']};
+const WHO = {narr:['Narrator','var(--narr)'], barq:['Bolt','var(--gold)'], sakhr:['Boulder','var(--ember)'], nasma:['Breeze','var(--teal)'], dhalam:['Doctor Darkness','var(--villain)']};
 let cardKey = '';
 function setCard(on, a='', b=''){
   const key = on ? a+'|'+b : '';
@@ -656,8 +691,9 @@ function setSub(line){
   const [name, col] = WHO[line[1]];
   el.querySelector('b').textContent = name; el.style.setProperty('--who', col);
   el.querySelector('span').textContent = line[2]; el.hidden = false;
+  if(mode === 'episode') Voice.say(line[1], line[2]);
 }
-const arDigits = s => String(s).replace(/\d/g, d => '٠١٢٣٤٥٦٧٨٩'[d]);
+const arDigits = s => String(s);
 const fmt = s => { s = Math.max(0, Math.floor(s)); return arDigits(Math.floor(s/60) + ':' + String(s%60).padStart(2,'0')); };
 
 function baseState(){
@@ -694,34 +730,34 @@ function barqDash(lt){
 }
 
 const scenes = [
-{ title:'مدينة النجوم', dur:8, mood:'mystery',
+{ title:'Star City', dur:8, mood:'mystery',
   enter(){ for(const k of HEROES) H[k].root.visible = false; },
   run(lt){ const a = .4 + lt*.09; camera.position.set(Math.sin(a)*28, 19 - lt*.7, Math.cos(a)*28); look.set(0,6,-6);
-    setCard(lt > .3 && lt < 4.6, 'فريق النجوم', 'الحلقة الأولى · كريستالة النور'); },
-  lines:[[4.8,'narr','في مدينةٍ بعيدة اسمها «مدينة النجوم»... تحرسها كريستالة سحرية تُضيء لياليها ✨',3.2]],
+    setCard(lt > .3 && lt < 4.6, 'Star Squad', 'Episode 1 · The Crystal of Light'); },
+  lines:[[.8,'narr','In a faraway place called Star City, a magic crystal lights up every night. ✨',6.6]],
   ev:[[0, () => Sound.sparkle()]] },
 
-{ title:'برق', dur:6, mood:'heroic',
+{ title:'Bolt', dur:6, mood:'heroic',
   enter(){ H.sakhr.root.visible = H.nasma.root.visible = false; },
   run(lt, dt){ const h = H.barq;
     if(lt < 1.5){ const u = eo(lt/1.5); h.root.position.set(lerp(-40,-3.2,u),0,lerp(6,2.2,u)); h.root.rotation.y = Math.PI/2 - .1; P_run(h,lt,20);
       if(dt) emit(V(h.root.position.x-.6,1.4,h.root.position.z), 0xffe04a, 3, .6, .45, .5, 0); }
     else { h.root.position.copy(HOME.barq); h.root.rotation.y = lerp(Math.PI/2, .35, sm(seg(lt,1.5,2))); lt < 2.1 ? P_idle(h,lt) : P_hero(h,lt); }
     camPath(lt, [[0,[-14,2.2,10],[-20,1.6,4]], [1.5,[0,2.4,9],[-3.2,1.8,2.2]], [6,[-1.2,2.3,7],[-3.2,2.1,2.2]]]); },
-  lines:[[2.2,'barq','أنا برق! أسرع من البرق نفسه ⚡',3.4]],
+  lines:[[2.0,'barq',"I'm Bolt! Faster than lightning itself! ⚡",3.6]],
   ev:[[.05, () => Sound.whoosh()], [1.5, () => { Sound.zap(); emit(V(-3.2,1.2,2.2), 0xffd21f, 30, 5, .6, .6); }]] },
 
-{ title:'صخر', dur:6, mood:'heroic',
+{ title:'Boulder', dur:6, mood:'heroic',
   enter(){ H.nasma.root.visible = false; },
   run(lt){ const h = H.sakhr, b = H.barq;
     if(lt < 1){ h.root.position.set(0, lerp(30,0,ei(lt)), 1); P_fall(h,lt); }
     else { h.root.position.copy(HOME.sakhr); if(lt < 1.6){ reset(h); h.rig.position.y = -.3*(1-seg(lt,1.2,1.6)); h.legL.rotation.z = .3; h.legR.rotation.z = -.3; } else if(lt < 4.8) P_flex(h,lt); else P_hero(h,lt); }
     P_idle(b,lt); b.root.rotation.y = lt > 1 && lt < 4.2 ? .7 : .25; if(lt > 1 && lt < 1.6) b.rig.position.y = Math.abs(Math.sin(lt*30))*.25;
     camPath(lt, [[0,[0,3,11],[0,9,1]], [1,[0,2.6,10],[0,2,1]], [6,[.8,2.4,7.5],[0,2.3,1]]]); },
-  lines:[[1.8,'sakhr','وأنا صخر... أقوى من الجبال! 💪',3.4]],
+  lines:[[1.6,'sakhr',"And I'm Boulder... stronger than a mountain! 💪",3.8]],
   ev:[[.15, () => Sound.whoosh()], [1, () => { Sound.boom(); shake = .7; ring(V(0,.2,1), 0xffb36b, 9); emit(V(0,.4,1), 0xc9a27a, 40, 6, .8, .9, -4); }]] },
 
-{ title:'نسمة', dur:7, mood:'heroic',
+{ title:'Breeze', dur:7, mood:'heroic',
   enter(){},
   run(lt, dt){ const h = H.nasma;
     if(lt < 2.2){
@@ -738,12 +774,12 @@ const scenes = [
     }
     if(lt < 4.6){ P_idle(H.barq,lt); P_idle(H.sakhr,lt); H.barq.root.rotation.y = .5; H.sakhr.root.rotation.y = lt < 2.4 ? .6 : 0; }
     else { P_hero(H.barq,lt); P_flex(H.sakhr,lt); H.barq.root.rotation.y = .3; H.sakhr.root.rotation.y = 0; }
-    setCard(lt > 4.7 && lt < 6.8, 'فريق النجوم!', '');
+    setCard(lt > 4.7 && lt < 6.8, 'Star Squad!', '');
     camPath(lt, [[0,[8,4,14],[14,10,0]], [2.2,[2,2.6,10],[3.2,1.8,2.2]], [4.5,[0,2.8,11.5],[0,2,1.5]], [7,[0,2.4,10],[0,2.2,1.5]]]); },
-  lines:[[2.5,'nasma','وأنا نسمة... والريح صديقتي! 🌪️',2.1]],
+  lines:[[2.3,'nasma',"And I'm Breeze. The wind is my friend! 🌪️",2.4]],
   ev:[[0, () => Sound.wind(2.4)], [2.2, () => { Sound.sparkle(); emit(V(3.2,1,2.2), 0x3fe0c8, 25, 4, .6, .6); }], [4.6, () => { Sound.sparkle(); emit(V(0,4,1.5), 0xffd21f, 50, 7, 1, .7, -2); }]] },
 
-{ title:'الدكتور ظلام', dur:12, mood:'villain',
+{ title:'Doctor Darkness', dur:12, mood:'villain',
   enter(){ saucer.root.visible = true; },
   run(lt){
     Env.red = sm(seg(lt,0,2))*.85;
@@ -759,10 +795,10 @@ const scenes = [
     Env.city = lt < 9.6 ? 1 : 1 - seg(lt,9.6,10.8);
     for(const k of HEROES){ P_lookUp(H[k],lt + H[k].seed); H[k].root.rotation.y = Math.PI; }
     camPath(lt, [[0,[0,2.2,10],[0,9,-10]], [3.6,[0,3,10],[0,13,-10]], [4,[3.5,17.6,-5],[0,17,-11]], [6,[3.2,17.4,-5.4],[0,16.9,-11]], [6.4,[10,7,10],[0,10,-10]], [9.5,[8,6,12],[0,9,-8]], [12,[0,5,14],[0,6,-4]]]); },
-  lines:[[4.2,'dhalam','هاهاها! أنا الدكتور ظلام!',1.8],[6.1,'dhalam','كريستالتكم الآن مُلكي... وداعاً للنور!',3.2],[9.8,'narr','وانطفأت أنوار المدينة كلها... 😱',2.2]],
+  lines:[[4.1,'dhalam','Ha ha ha! I am Doctor Darkness!',2.1],[6.3,'dhalam','Your crystal is mine now. Say goodbye to the light!',3.3],[9.8,'narr','And every light in the city went out... 😱',2.2]],
   ev:[[.1, () => Sound.whoosh()], [4.1, () => Sound.laugh()], [6.2, () => Sound.beam(3.3)], [9.6, () => Sound.powerDown()]] },
 
-{ title:'الظلام', dur:7, mood:'mystery',
+{ title:'Darkness Falls', dur:7, mood:'mystery',
   enter(){ saucer.root.visible = true; crystal.visible = false; Object.assign(Env, {city:0, crystal:0, red:.4}); },
   run(lt){
     saucer.root.position.set(0, SAUCER.y + Math.sin(lt*2)*.15, SAUCER.z); villainOnSaucer(); P_idle(H.dhalam,lt);
@@ -770,10 +806,10 @@ const scenes = [
     lt < 4.6 ? P_idle(H.nasma,lt) : P_hero(H.nasma,lt);
     if(lt > 5.6){ P_hero(H.barq,lt); P_flex(H.sakhr,lt); }
     camPath(lt, [[0,[-5,2.6,6.5],[-3.2,2.4,2.2]], [2.4,[-2,2.6,6.5],[-1.2,2.4,1.5]], [2.6,[0,2.9,6.2],[0,2.6,1]], [4.4,[1.4,2.8,6.5],[1.4,2.5,1.5]], [4.6,[3,2.6,6.8],[3.2,2.4,2.2]], [5.6,[0,2.6,10],[0,2.3,1.5]], [7,[0,2.4,9],[0,2.4,1.5]]]); },
-  lines:[[.3,'barq','لقد سرق النور من مدينتنا!',2.2],[2.6,'sakhr','الأطفال يخافون من الظلام...',1.9],[4.6,'nasma','لن نسمح له! هيا يا فريق النجوم!',2.3]],
+  lines:[[.3,'barq','He stole the light from our city!',2.2],[2.6,'sakhr','The kids are scared of the dark...',1.9],[4.6,'nasma',"Not on our watch! Let's go, Star Squad!",2.3]],
   ev:[[4.6, () => Sound.setMood('heroic')], [5.6, () => { Sound.sparkle(); for(const k of HEROES) emit(hp(k).clone().add(V(0,2,0)), 0xffd21f, 15, 3, .6, .5); }]] },
 
-{ title:'جيش الروبوتات', dur:15, mood:'action',
+{ title:'Robot Army', dur:15, mood:'action',
   enter(){ saucer.root.visible = true; crystal.visible = false; Object.assign(Env, {city:0, crystal:0, red:.4}); this.st = {dead:[]}; },
   run(lt, dt){
     saucer.root.position.set(0, SAUCER.y + Math.sin(lt*2)*.15, SAUCER.z); villainOnSaucer();
@@ -806,12 +842,12 @@ const scenes = [
     });
     const bx = () => [b.root.position.x+2, 4.2, b.root.position.z+9.5], bt = () => [b.root.position.x, 1.5, b.root.position.z];
     camPath(lt, [[0,[0,9,18],[0,3,-3]], [2.8,[0,8,16],[-3,1,1]], [3.1,bx,bt], [6.2,bx,bt], [7,[6,2,8],[0,2,-2]], [8.4,[4.5,1.6,6],[0,1.8,-2.5]], [9.3,[13,3.5,10],[8,2,1]], [11.2,[14,4,11],[9,3,2]], [12,[0,4,13.5],[0,2.2,0]], [15,[0,4.2,12],[0,2.3,0]]]); },
-  lines:[[.2,'dhalam','هجوم يا روبوتاتي! 🤖',2.2],[2.9,'barq','دوري أنا! ⚡',1.5],[7.1,'sakhr','زلزال الصخر!',1.6],[9.2,'nasma','إعصار نسمة! 🌪️',1.8],[12.1,'barq','هل هذا كل ما لديك يا ظلام؟ 😎',2.8]],
+  lines:[[.2,'dhalam','Attack, my robots! 🤖',2.2],[2.9,'barq','My turn! ⚡',1.5],[7.1,'sakhr','Boulder quake!',1.6],[9.2,'nasma','Breeze tornado! 🌪️',1.8],[12.1,'barq',"Is that all you've got, Darkness? 😎",2.8]],
   ev:[[.2, () => Sound.laugh()], [3.0, () => Sound.whoosh()], ...HIT.slice(0,4).map(t => [t, () => { Sound.punch(); shake = .3; }]),
       [7.3, () => Sound.whoosh()], [8.2, () => { Sound.boom(); shake = 1; ring(V(0,.2,-2.5), 0xffb36b, 12); emit(V(0,.4,-2.5), 0xc9a27a, 50, 7, .9, 1, -4); }],
       [9.5, () => Sound.wind(1.8)], [10, () => Sound.punch()], [10.4, () => Sound.punch()]] },
 
-{ title:'المعركة الأخيرة', dur:14, mood:'action',
+{ title:'The Final Battle', dur:14, mood:'action',
   enter(){ saucer.root.visible = true; crystal.visible = false; Object.assign(Env, {city:0, crystal:0, red:.4}); },
   run(lt, dt){
     const v = H.dhalam;
@@ -847,12 +883,12 @@ const scenes = [
     if(lt >= 9.6 && lt < 11.5){ const u = seg(lt,9.6,11.5), to = hp('barq').clone().add(V(0,3.6,0)); crystal.visible = true; crystal.position.set(lerp(0,to.x,sm(u)), lerp(SAUCER.y-1,to.y,u) + Math.sin(u*Math.PI)*4, lerp(SAUCER.z,to.z,sm(u))); Env.crystal = .5; }
     else if(lt >= 11.5){ crystal.visible = true; crystal.position.copy(hp('barq')).add(V(0,3.6,0)); Env.crystal = .7; }
     camPath(lt, [[0,[3,18,-6],[0,3,1.5]], [1.4,[3,18,-6],[0,3,1.5]], [1.7,[11,4,2],[0,3,-3]], [3.7,[12,4.5,3],[0,3,-3]], [4,[0,1.2,11],[0,4,0]], [6.2,[0,2,12.5],[0,6.5,-1]], [7.2,[16,9,5],[0,10,-5]], [9.4,[17,9.5,6],[0,10.5,-6]], [9.7,[0,7,17],[0,10,-6]], [11.5,[0,3,9.5],[-3.2,3,2.2]], [14,[-1,2.9,7.5],[-3.2,3,2.2]]]); },
-  lines:[[.2,'dhalam','كفى! ذوقوا شعاع الظلام! 🌑',1.8],[2,'sakhr','درع الصخر! 🛡️',1.8],[4,'nasma','يا رياح... ارفعينا!',2],[6.2,'barq','معاً يا فريق... ضربة النجوم! ⭐',2.4],[10,'dhalam','لااااا! سأعوووود يا أبطال!!',2.2],[12,'barq','أمسكتُ الكريستالة! 💎',2]],
+  lines:[[.2,'dhalam','Enough! Taste my shadow beam! 🌑',2],[2.2,'sakhr','Rock shield! 🛡️',1.7],[4,'nasma','Winds... lift us up!',2],[6.2,'barq','Together, team... Star Strike! ⭐',2.4],[10,'dhalam',"Nooo! I'll be back, heroes!",2.2],[12,'barq','Got the crystal! 💎',2]],
   ev:[[1.4, () => Sound.beam(2.2,true)], [1.9, () => { Sound.punch(); shake = .4; }], [4, () => Sound.wind(2.5)], [7.4, () => Sound.beam(2.1)],
       [9.5, () => { Sound.boom(true); shake = 1.3; flash(V(0,SAUCER.y,SAUCER.z+3), 500); const p = V(0,SAUCER.y,SAUCER.z); emit(p, 0xff8a3d, 70, 10, 1.1, 1.3, -2); emit(p, 0xffd21f, 40, 8, .9, 1, -2); emit(p, 0xb36bff, 30, 7, 1, 1, -2); ring(p, 0xffd21f, 14, 1); }],
       [9.9, () => Sound.whoosh()], [11.5, () => { Sound.sparkle(); emit(hp('barq').clone().add(V(0,3.6,0)), 0xffd21f, 25, 3, .7, .6); }]] },
 
-{ title:'عودة النور', dur:12, mood:'victory',
+{ title:'The Light Returns', dur:12, mood:'victory',
   enter(){ crystal.visible = true; Object.assign(Env, {city:0, crystal:.7, red:.4}); this.st = {fw:4.2}; },
   run(lt, dt){
     const b = H.barq;
@@ -867,17 +903,17 @@ const scenes = [
       else { k === 'sakhr' ? P_flex(h,lt) : P_hero(h,lt); h.root.rotation.y = 0; } }
     if(dt && lt > this.st.fw && lt < 11){ this.st.fw += .5; const c = [0xffd21f,0x3fe0c8,0xff8a3d,0xff4d9a,0x8f7bff,0xffffff][Math.floor(Math.random()*6)]; emit(V((Math.random()-.5)*44, 18+Math.random()*12, -18-Math.random()*14), c, 45, 8, 1.4, .8, -2); Sound.pop(); }
     camPath(lt, [[0,[0,3,9],[-3,3.4,2]], [1,[0,4,10],[0,5,-3]], [3.5,[0,6,13],[0,8.5,-10]], [4.6,[0,4,14],[0,6,-6]], [8,[6,3.5,11],[0,4,-4]], [12,[0,3,10.5],[0,2.6,1]]]); },
-  lines:[[3.7,'narr','وعاد النور إلى مدينة النجوم! 🌟',2.6],[6.6,'nasma','ما دمنا معاً... لن يهزمنا الظلام!',2.6],[9.4,'narr','فريق النجوم... دائماً في الخدمة!',2.5]],
+  lines:[[3.7,'narr','And the light came back to Star City! 🌟',2.6],[6.6,'nasma',"As long as we're together, darkness can't win!",2.6],[9.4,'narr','The Star Squad... always ready to help!',2.5]],
   ev:[[1, () => Sound.whoosh()], [3.5, () => { Sound.sparkle(); emit(CRYSTAL_HOME, 0xffd21f, 50, 7, 1, .9, -1); ring(V(0,.3,-11), 0xffd21f, 20, 1.4); }]] },
 
-{ title:'النهاية', dur:7, mood:'victory',
+{ title:'The End', dur:7, mood:'victory',
   enter(){ Object.assign(Env, {day:1, city:1, crystal:1, red:0}); },
   run(lt){
     HEROES.forEach((k,i) => { const h = H[k]; h.root.rotation.y = 0; lt > 2.5 && lt < 5 ? P_cheer(h,lt,i) : (k === 'sakhr' ? P_flex(h,lt) : P_hero(h,lt)); });
-    setCard(lt > .4, 'النهاية', 'الحلقة القادمة: عودة الدكتور ظلام!');
+    setCard(lt > .4, 'The End', 'Next time: Doctor Darkness Returns!');
     camPath(lt, [[0,[0,3,10.5],[0,2.6,1]], [7,[0,3.6,13],[0,3.4,1]]]); },
   lines:[],
-  ev:[[.4, () => Sound.sparkle()]] },
+  ev:[[.4, () => Sound.sparkle()], [.8, () => Voice.say('narr','The end. Next time: Doctor Darkness returns!')]] },
 ];
 let acc = 0; for(const s of scenes){ s.start = acc; acc += s.dur; }
 const TOTAL = acc;
@@ -892,23 +928,24 @@ function enterScene(i){
   $('chip').textContent = arDigits(i+1) + ' · ' + s.title;
 }
 function startEpisode(){
-  Sound.init(); mode = 'episode'; T = 0; cur = -1; paused = false; ended = false; setPauseIcon();
+  Sound.init(); Voice.stop(); Voice.unlock(); mode = 'episode'; T = 0; cur = -1; paused = false; ended = false; setPauseIcon();
   show('menu',false); show('gal',false); show('endS',false); show('hud',true); show('ctrl',true); setCard(false); setSub(null);
 }
 function toMenu(){
+  Voice.stop();
   mode = 'menu'; menuT = 0; paused = false; baseState(); setCard(false); setSub(null);
   show('menu',true); show('gal',false); show('endS',false); show('hud',false); show('ctrl',false);
   Sound.setMood(null); Sound.resume();
 }
 const GAL = [
-  {k:'barq', name:'برق', role:'السرعة الخارقة ⚡', col:'var(--gold)', bio:'أسرع فتى في العالم. يجري بسرعة البرق ويترك خلفه شرارات صفراء، ويحب إلقاء النكت حتى في أصعب المعارك.', stats:[['السرعة',10],['القوة',5],['الطيران',2],['الذكاء',7]]},
-  {k:'sakhr', name:'صخر', role:'القوة الصخرية 🪨', col:'var(--ember)', bio:'قوي كالجبل وقلبه طيب. يضرب الأرض فتهتز، ويصنع دروعاً من الصخر ليحمي أصدقاءه وأهل المدينة.', stats:[['السرعة',3],['القوة',10],['الطيران',1],['الذكاء',6]]},
-  {k:'nasma', name:'نسمة', role:'سيدة الرياح 🌪️', col:'var(--teal)', bio:'قائدة الفريق الذكية. تطير مع الرياح وتصنع الأعاصير، هادئة وشجاعة وتجد دائماً خطة للنصر.', stats:[['السرعة',7],['القوة',5],['الطيران',10],['الذكاء',9]]},
-  {k:'dhalam', name:'الدكتور ظلام', role:'الشرير 🌑', col:'var(--villain)', bio:'عالِم شرير يكره النور. يركب صحنه الطائر مع جيش من الروبوتات، ويحلم بإغراق مدينة النجوم في الظلام.', stats:[['السرعة',4],['القوة',6],['الطيران',8],['الذكاء',9]]},
+  {k:'barq', hello:"I'm Bolt, the fastest kid in the world!", name:'Bolt', role:'Super Speed ⚡', col:'var(--gold)', bio:'The fastest kid in the world. He runs like lightning, leaves yellow sparks behind him, and cracks jokes even in the toughest fights.', stats:[['Speed',10],['Strength',5],['Flight',2],['Brains',7]]},
+  {k:'sakhr', hello:"I'm Boulder. Strong as a mountain!", name:'Boulder', role:'Rock Power 🪨', col:'var(--ember)', bio:'Strong as a mountain with a heart of gold. One punch shakes the ground, and he builds rock shields to protect his friends.', stats:[['Speed',3],['Strength',10],['Flight',1],['Brains',6]]},
+  {k:'nasma', hello:"I'm Breeze, leader of the Star Squad!", name:'Breeze', role:'Wind Master 🌪️', col:'var(--teal)', bio:'The team\'s clever leader. She rides the wind, spins up tornadoes, and always finds a plan to win.', stats:[['Speed',7],['Strength',5],['Flight',10],['Brains',9]]},
+  {k:'dhalam', hello:"Ha ha ha! I am Doctor Darkness!", name:'Doctor Darkness', role:'The Villain 🌑', col:'var(--villain)', bio:'An evil scientist who hates the light. He rides a flying saucer with a robot army and dreams of plunging Star City into darkness.', stats:[['Speed',4],['Strength',6],['Flight',8],['Brains',9]]},
 ];
 const GPOS = {barq:V(-4.8,0,0), sakhr:V(-1.6,0,0), nasma:V(1.6,0,0), dhalam:V(4.8,0,0)};
 function openGallery(i=0){
-  Sound.init(); mode = 'gallery'; gi = i; baseState(); setCard(false); setSub(null);
+  Sound.init(); Voice.unlock(); mode = 'gallery'; gi = i; baseState(); setCard(false); setSub(null);
   for(const g of GAL){ const h = H[g.k]; h.root.visible = true; h.root.position.copy(GPOS[g.k]); h.root.rotation.y = 0; h.root.scale.setScalar(h.baseScale); }
   camera.position.set(0,3,9); look.set(0,2,0);
   show('menu',false); show('endS',false); show('hud',false); show('ctrl',false); show('gal',true);
@@ -918,12 +955,13 @@ function renderGal(){
   const g = GAL[gi];
   $('galSheet').style.setProperty('--who', g.col);
   $('gName').textContent = g.name; $('gRole').textContent = g.role; $('gBio').textContent = g.bio;
-  $('gStats').innerHTML = g.stats.map(([n,v]) => `<span>${n}</span><span class="bar"><i style="width:${v*10}%"></i></span><em>${arDigits(v)}/١٠</em>`).join('');
+  $('gStats').innerHTML = g.stats.map(([n,v]) => `<span>${n}</span><span class="bar"><i style="width:${v*10}%"></i></span><em>${v}/10</em>`).join('');
   Sound.setMood(g.k === 'dhalam' ? 'villain' : 'heroic');
+  Voice.stop(); Voice.say(g.k, g.hello);
   galFx = 0;
 }
 let galFx = 0;
-function setPauseIcon(){ $('pIcon').setAttribute('d', paused ? 'M7 4v16l13-8z' : 'M6 4h4v16H6zm8 0h4v16h-4z'); $('bPause').setAttribute('aria-label', paused ? 'تشغيل' : 'إيقاف مؤقت'); }
+function setPauseIcon(){ $('pIcon').setAttribute('d', paused ? 'M7 4v16l13-8z' : 'M6 4h4v16H6zm8 0h4v16h-4z'); $('bPause').setAttribute('aria-label', paused ? 'Play' : 'Pause'); }
 
 $('bPlay').onclick = startEpisode;
 $('bCast').onclick = () => openGallery(0);
@@ -932,9 +970,9 @@ $('eCast').onclick = () => openGallery(0);
 $('eMenu').onclick = toMenu;
 $('bHome').onclick = toMenu;
 $('bRestart').onclick = startEpisode;
-$('bPause').onclick = () => { if(ended) return; paused = !paused; paused ? Sound.pause() : Sound.resume(); setPauseIcon(); };
-$('bNext').onclick = () => { if(cur < scenes.length-1){ T = scenes[cur+1].start; if(paused){ paused = false; Sound.resume(); setPauseIcon(); } } };
-$('bMute').onclick = () => { const m = Sound.toggleMute(); $('mIcon').setAttribute('d', m ? 'M3 9v6h4l5 5V4L7 9zm16.6 3 2.4-2.4-1.4-1.4-2.4 2.4-2.4-2.4-1.4 1.4 2.4 2.4-2.4 2.4 1.4 1.4 2.4-2.4 2.4 2.4 1.4-1.4z' : 'M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'); };
+$('bPause').onclick = () => { if(ended) return; paused = !paused; paused ? (Sound.pause(), Voice.stop()) : Sound.resume(); setPauseIcon(); };
+$('bNext').onclick = () => { if(cur < scenes.length-1){ Voice.stop(); T = scenes[cur+1].start; if(paused){ paused = false; Sound.resume(); setPauseIcon(); } } };
+$('bMute').onclick = () => { const m = Sound.toggleMute(); Voice.setMuted(m); $('mIcon').setAttribute('d', m ? 'M3 9v6h4l5 5V4L7 9zm16.6 3 2.4-2.4-1.4-1.4-2.4 2.4-2.4-2.4-1.4 1.4 2.4 2.4-2.4 2.4 1.4 1.4 2.4-2.4 2.4 2.4 1.4-1.4z' : 'M3 9v6h4l5 5V4L7 9zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z'); };
 $('gPrev').onclick = () => { gi = (gi + GAL.length - 1) % GAL.length; renderGal(); };
 $('gNext').onclick = () => { gi = (gi + 1) % GAL.length; renderGal(); };
 $('gBack').onclick = toMenu;
@@ -959,7 +997,8 @@ function frame(now){
     s.run.call(s, lt, dt);
     const line = s.lines.find(l => lt >= l[0] && lt < l[0] + l[3]);
     setSub(line || null);
-    if(line && H[line[1]] && H[line[1]].root.visible) talk(H[line[1]], clock);
+    const tw = Voice.active ? Voice.who : (line && line[1]);
+    if(tw && H[tw] && H[tw].root.visible) talk(H[tw], clock);
     $('prog').firstElementChild.style.width = (Math.min(T,TOTAL)/TOTAL*100) + '%';
     $('time').textContent = fmt(Math.min(T,TOTAL)) + ' / ' + fmt(TOTAL);
     if(T >= TOTAL && !ended){ ended = true; show('endS',true); show('ctrl',false); setSub(null); }
@@ -978,6 +1017,7 @@ function frame(now){
     else if(g.k === 'sakhr'){ k < 1.5 ? P_flex(h,clock) : P_hero(h,clock); if(k < dt*1.01 && dt){ ring(V(p.x,.2,0), 0xffb36b, 6); Sound.punch(); } }
     else if(g.k === 'nasma'){ P_hover(h,clock); h.root.position.y = .6 + Math.sin(clock*2)*.2; tornado.visible = true; tornado.position.set(p.x,-.3,0); tornado.scale.setScalar(1); }
     else { k < 1.5 ? P_laugh(h,clock) : P_idle(h,clock); if(dt) emit(p.clone().add(V((Math.random()-.5)*1.5,.3,(Math.random()-.5)*1.5)), 0x9b3dff, 1, .5, 1, .6, 1.5); }
+    if(Voice.who === g.k) talk(h, clock);
     if(g.k !== 'nasma'){ tornado.visible = false; H.nasma.root.position.y = 0; }
   }
 
@@ -999,7 +1039,7 @@ $('msg').hidden = true;
 requestAnimationFrame(frame);
 </script>
 <script>
-  window.addEventListener('error', e => { const m = document.getElementById('msg'); if(m && !m.hidden) m.textContent = 'تعذّر تشغيل المسلسل على هذا الجهاز (يحتاج متصفحاً يدعم WebGL).'; });
+  window.addEventListener('error', e => { const m = document.getElementById('msg'); if(m && !m.hidden) m.textContent = 'This device could not start the show. It needs a browser with WebGL.'; });
 </script>
 </body>
 </html>
