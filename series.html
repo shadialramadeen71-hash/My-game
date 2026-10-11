@@ -72,7 +72,7 @@ button:active{transform:scale(.97)}
 #msg{position:fixed;inset:0;display:grid;place-items:center;padding:24px;text-align:center;font-size:1.1rem;color:var(--muted);background:var(--night)}
 @media (prefers-reduced-motion:reduce){#card{transition:none}}
 </style>
-<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.165.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.165.0/examples/jsm/"}}</script>
 </head>
 <body>
 <canvas id="c" aria-label="مدينة النجوم ثلاثية الأبعاد"></canvas>
@@ -137,6 +137,11 @@ button:active{transform:scale(.97)}
 
 <script type="module">
 import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 /* ================= helpers ================= */
 const $ = id => document.getElementById(id);
@@ -157,23 +162,36 @@ const renderer = new THREE.WebGLRenderer({canvas, antialias:true, powerPreferenc
 renderer.setPixelRatio(Math.min(window.devicePixelRatio||1, 1.75));
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.toneMapping = THREE.AgXToneMapping;
+renderer.toneMappingExposure = 1.0;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0b1236);
 scene.fog = new THREE.Fog(0x0b1236, 70, 190);
 const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 500);
 const look = V();
+// Blender-style render: image-based lighting + bloom (like Eevee)
+const pmrem = new THREE.PMREMGenerator(renderer);
+scene.environment = pmrem.fromScene(new RoomEnvironment(), .04).texture;
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256,256), .5, .45, .9);
+composer.addPass(bloom);
+composer.addPass(new OutputPass());
 function resize(){
   const w = innerWidth, h = innerHeight, a = w/h;
-  renderer.setSize(w, h, false);
+  renderer.setSize(w, h, false); composer.setPixelRatio(renderer.getPixelRatio()); composer.setSize(w, h);
   camera.aspect = a; camera.fov = a < .8 ? 72 : a < 1.2 ? 60 : 48;
   camera.updateProjectionMatrix();
 }
 addEventListener('resize', resize); resize();
 
-/* ================= toon look (Blender-style cel shading + ink outline) ================= */
+/* ================= materials (Blender-style physically based shading) ================= */
 const grad = new THREE.DataTexture(new Uint8Array([80,80,80,255, 165,165,165,255, 255,255,255,255]), 3, 1);
 grad.minFilter = grad.magFilter = THREE.NearestFilter; grad.needsUpdate = true;
-const toon = (color, o={}) => new THREE.MeshToonMaterial({color, gradientMap:grad, ...o});
+const toon = (color, o={}) => new THREE.MeshPhysicalMaterial({color, roughness:.42, metalness:0, clearcoat:.35, clearcoatRoughness:.35, ...o});
+const skinMat = color => new THREE.MeshPhysicalMaterial({color, roughness:.55, sheen:.6, sheenColor:new THREE.Color(0xff9c80), sheenRoughness:.45});
+const eyeMat = color => new THREE.MeshPhysicalMaterial({color, roughness:.08, clearcoat:1, clearcoatRoughness:.05});
+const matte = (color, o={}) => new THREE.MeshStandardMaterial({color, roughness:.85, metalness:0, ...o});
 const outlineMat = new THREE.ShaderMaterial({
   uniforms:{thick:{value:0.03}},
   vertexShader:'uniform float thick; void main(){ gl_Position = projectionMatrix*modelViewMatrix*vec4(position+normal*thick,1.0); }',
@@ -185,10 +203,9 @@ function part(geo, mat, parent, p=[0,0,0], s=null, r=null, outline=true){
   const m = new THREE.Mesh(geo, mat);
   m.position.set(...p); if(s) m.scale.set(...s); if(r) m.rotation.set(...r);
   m.castShadow = true; parent.add(m);
-  if(outline) m.add(new THREE.Mesh(geo, outlineMat));
   return m;
 }
-function edges(mesh){ mesh.add(new THREE.LineSegments(new THREE.EdgesGeometry(mesh.geometry, 20), edgeMat)); return mesh; }
+function edges(mesh){ return mesh; }
 const basic = (color, o={}) => new THREE.MeshBasicMaterial({color, ...o});
 function makeDot(){
   const c = document.createElement('canvas'); c.width = c.height = 64;
@@ -232,39 +249,39 @@ function moonEmblem(m, bg){
 function makeHero(o){
   const S = o.bulk || 1;
   const root = new THREE.Group(), rig = new THREE.Group(); root.add(rig);
-  const suit = toon(o.suit), acc = toon(o.accent), skin = toon(o.skin), glove = toon(o.glove ?? o.accent), bootM = toon(o.boot ?? o.accent);
+  const suit = toon(o.suit), acc = toon(o.accent), skin = skinMat(o.skin), glove = toon(o.glove ?? o.accent), bootM = toon(o.boot ?? o.accent);
   const legs = [1,-1].map(sd => {
     const p = new THREE.Group(); p.position.set(.22*S*sd, .95, 0); rig.add(p);
-    part(new THREE.CapsuleGeometry(.17*S,.42,6,12), suit, p, [0,-.38,0]);
-    part(new THREE.SphereGeometry(.2*S,16,12), bootM, p, [0,-.8,.06], [1,.75,1.35]);
+    part(new THREE.CapsuleGeometry(.17*S,.42,12,28), suit, p, [0,-.38,0]);
+    part(new THREE.SphereGeometry(.2*S,40,28), bootM, p, [0,-.8,.06], [1,.75,1.35]);
     return p;
   });
   const torso = new THREE.Group(); torso.position.y = 1.0; rig.add(torso);
-  part(new THREE.CapsuleGeometry(.42*S,.45,8,18), suit, torso, [0,.42,0]);
+  part(new THREE.CapsuleGeometry(.42*S,.45,12,28), suit, torso, [0,.42,0]);
   part(new THREE.TorusGeometry(.43*S,.07,8,28), acc, torso, [0,.08,0], null, [Math.PI/2,0,0], false);
   const em = o.emblem(toon(o.emblemColor ?? o.accent), o.emblemBg ?? 0xffffff); em.position.set(0,.62,.42*S+.01); torso.add(em);
   const arms = [1,-1].map(sd => {
     const p = new THREE.Group(); p.position.set((.42*S+.1)*sd, 1.78, 0); rig.add(p);
-    part(new THREE.CapsuleGeometry(.13*S,.38,6,12), suit, p, [0,-.3,0]);
-    part(new THREE.SphereGeometry(.17*S,14,12), glove, p, [0,-.66,0]);
+    part(new THREE.CapsuleGeometry(.13*S,.38,12,28), suit, p, [0,-.3,0]);
+    part(new THREE.SphereGeometry(.17*S,40,28), glove, p, [0,-.66,0]);
     if(o.pads) part(new THREE.DodecahedronGeometry(.3*S,0), toon(o.pads), p, [0,.02,0], null, null, false);
     return p;
   });
   const head = new THREE.Group(); head.position.y = 2.55; rig.add(head);
-  part(new THREE.SphereGeometry(.58,32,24), skin, head);
-  if(o.mask) part(new THREE.SphereGeometry(.597,32,12,0,Math.PI*2,1.22,.52), toon(o.mask), head, [0,0,0], null, null, false);
+  part(new THREE.SphereGeometry(.58,40,28), skin, head);
+  if(o.mask) part(new THREE.SphereGeometry(.597,40,28,0,Math.PI*2,1.22,.52), toon(o.mask), head, [0,0,0], null, null, false);
   for(const sd of [1,-1]){
-    const w = new THREE.Mesh(new THREE.SphereGeometry(.15,16,12), o.evil ? basic(0xff2a4a) : basic(0xffffff));
+    const w = new THREE.Mesh(new THREE.SphereGeometry(.15,40,28), o.evil ? basic(0xff2a4a) : eyeMat(0xffffff));
     w.position.set(.2*sd,.04,.54); w.scale.set(1,1.3,.6); head.add(w);
     if(o.evil){ const gl = glowSprite(0xff2a4a,.7,.8); gl.position.set(.2*sd,.04,.62); head.add(gl); }
     else {
-      const p = new THREE.Mesh(new THREE.SphereGeometry(.075,12,10), basic(0x1a1030)); p.position.set(.19*sd,.03,.63); p.scale.z=.5; head.add(p);
+      const p = new THREE.Mesh(new THREE.SphereGeometry(.075,40,28), eyeMat(0x1a1030)); p.position.set(.19*sd,.03,.63); p.scale.z=.5; head.add(p);
       const hl = new THREE.Mesh(new THREE.SphereGeometry(.026,8,6), basic(0xffffff)); hl.position.set(.19*sd+.03,.08,.67); head.add(hl);
     }
-    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(.03,.14,4,8), toon(o.brow ?? 0x2a1a10));
+    const brow = new THREE.Mesh(new THREE.CapsuleGeometry(.03,.14,12,28), toon(o.brow ?? 0x2a1a10));
     brow.rotation.z = Math.PI/2 + (o.evil ? .45*sd : -.12*sd); brow.position.set(.2*sd,.27,.52); head.add(brow);
   }
-  const mouth = new THREE.Mesh(new THREE.TorusGeometry(.11,.028,8,16,Math.PI), basic(o.evil ? 0x200818 : 0x5a1020));
+  const mouth = new THREE.Mesh(new THREE.TorusGeometry(.11,.028,12,24,Math.PI), eyeMat(o.evil ? 0x200818 : 0x7a1a2a));
   mouth.position.set(0,-.2,.55); mouth.rotation.set(-.25,0,o.evil ? 0 : Math.PI); head.add(mouth);
   o.hair && o.hair(head);
   let cape = null;
@@ -278,7 +295,7 @@ function makeHero(o){
 }
 
 function hairBarq(h){
-  part(new THREE.SphereGeometry(.62,32,16,0,Math.PI*2,0,1.15), toon(0x2166e8), h, [0,.02,-.02], null, null, false);
+  part(new THREE.SphereGeometry(.62,40,28,0,Math.PI*2,0,1.15), toon(0x2166e8), h, [0,.02,-.02], null, null, false);
   for(const sd of [1,-1]){
     part(new THREE.ConeGeometry(.11,.5,8), toon(0xffd21f), h, [.6*sd,.22,-.05], null, [0,0,-1.25*sd]);
     part(new THREE.ConeGeometry(.08,.35,8), toon(0xffd21f), h, [.58*sd,.4,-.1], null, [0,0,-.85*sd]);
@@ -287,18 +304,18 @@ function hairBarq(h){
 }
 function hairSakhr(h){
   part(new THREE.CylinderGeometry(.48,.58,.36,18), toon(0x3a2416), h, [0,.42,-.03]);
-  part(new THREE.SphereGeometry(.6,24,12,0,Math.PI*2,0,.9), toon(0x3a2416), h, [0,.05,-.06], null, null, false);
+  part(new THREE.SphereGeometry(.6,40,28,0,Math.PI*2,0,.9), toon(0x3a2416), h, [0,.05,-.06], null, null, false);
 }
 function hairNasma(h){
-  const hairM = toon(0x4a2a7a);
-  part(new THREE.SphereGeometry(.625,32,16,Math.PI*.15,Math.PI*1.7,0,1.45), hairM, h, [0,.03,-.02], null, [0,Math.PI,0], false);
-  part(new THREE.SphereGeometry(.625,32,10,0,Math.PI*2,0,.75), hairM, h, [0,.03,0], null, null, false);
-  part(new THREE.SphereGeometry(.2,16,12), hairM, h, [0,.3,-.62]);
+  const hairM = toon(0x4a2a7a,{roughness:.55,sheen:.8,sheenColor:new THREE.Color(0xb48cff)});
+  part(new THREE.SphereGeometry(.625,40,28,Math.PI*.15,Math.PI*1.7,0,1.45), hairM, h, [0,.03,-.02], null, [0,Math.PI,0], false);
+  part(new THREE.SphereGeometry(.625,40,28,0,Math.PI*2,0,.75), hairM, h, [0,.03,0], null, null, false);
+  part(new THREE.SphereGeometry(.2,40,28), hairM, h, [0,.3,-.62]);
   part(new THREE.ConeGeometry(.2,.85,12), hairM, h, [0,-.2,-.78], null, [-.35+Math.PI,0,0]);
   part(new THREE.TorusGeometry(.62,.035,6,32,Math.PI*.6), toon(0xffd21f), h, [0,.22,0], null, [Math.PI/2-.35,0,Math.PI*.2], false);
 }
 function hairDhalam(h){
-  part(new THREE.SphereGeometry(.64,32,16,0,Math.PI*2,0,1.5), toon(0x22142f), h, [0,.02,-.03], null, null, false);
+  part(new THREE.SphereGeometry(.64,40,28,0,Math.PI*2,0,1.5), toon(0x22142f), h, [0,.02,-.03], null, null, false);
   for(const sd of [1,-1]) part(new THREE.ConeGeometry(.13,.7,10), toon(0xd62246), h, [.38*sd,.62,0], null, [0,0,-.55*sd]);
   part(new THREE.ConeGeometry(.12,.3,8), toon(0x22142f), h, [0,-.62,.32], null, [Math.PI+.5,0,0]);
 }
@@ -314,10 +331,10 @@ const HEROES = ['barq','sakhr','nasma'];
 const HOME = {barq:V(-3.2,0,2.2), sakhr:V(0,0,1.0), nasma:V(3.2,0,2.2)};
 
 function makeRobot(){
-  const root = new THREE.Group(), body = toon(0x8790b4), dark = toon(0x3a1f5c);
-  part(new THREE.CapsuleGeometry(.42,.3,6,14), body, root, [0,1.1,0]);
-  part(new THREE.SphereGeometry(.36,20,14), body, root, [0,1.92,0]);
-  const eye = new THREE.Mesh(new THREE.SphereGeometry(.13,12,10), basic(0xff2a4a)); eye.position.set(0,1.95,.31); eye.scale.z=.5; root.add(eye);
+  const root = new THREE.Group(), body = toon(0x9aa3c4,{metalness:.7,roughness:.3}), dark = toon(0x3a1f5c);
+  part(new THREE.CapsuleGeometry(.42,.3,12,28), body, root, [0,1.1,0]);
+  part(new THREE.SphereGeometry(.36,40,28), body, root, [0,1.92,0]);
+  const eye = new THREE.Mesh(new THREE.SphereGeometry(.13,40,28), basic(0xff2a4a)); eye.position.set(0,1.95,.31); eye.scale.z=.5; root.add(eye);
   const eg = glowSprite(0xff2a4a,.9,.8); eg.position.set(0,1.95,.4); root.add(eg);
   part(new THREE.CylinderGeometry(.025,.025,.35,6), dark, root, [0,2.42,0], null, null, false);
   const tip = new THREE.Mesh(new THREE.SphereGeometry(.07,8,6), basic(0xff2a4a)); tip.position.set(0,2.62,0); root.add(tip);
@@ -329,9 +346,9 @@ const robots = Array.from({length:8}, () => { const r = makeRobot(); scene.add(r
 
 function makeSaucer(){
   const root = new THREE.Group();
-  part(new THREE.SphereGeometry(3,40,20), toon(0x6b6f86), root, [0,0,0], [1,.25,1]);
+  part(new THREE.SphereGeometry(3,40,28), toon(0x9aa0b8,{metalness:.85,roughness:.22}), root, [0,0,0], [1,.25,1]);
   part(new THREE.TorusGeometry(3,.16,8,48), toon(0x3a1f5c), root, [0,0,0], null, [Math.PI/2,0,0], false);
-  part(new THREE.SphereGeometry(.9,24,12,0,Math.PI*2,0,Math.PI/2), toon(0xb08cff,{transparent:true,opacity:.7}), root, [0,.55,-1.4], null, null, false);
+  part(new THREE.SphereGeometry(.9,40,28,0,Math.PI*2,0,Math.PI/2), toon(0xb08cff,{transmission:.9,thickness:.5,roughness:.05}), root, [0,.55,-1.4], null, null, false);
   const ring = new THREE.Group(); root.add(ring);
   const cols = [0xff4d6d,0xffd21f,0x7cf2ff];
   for(let i=0;i<14;i++){ const a = i/14*Math.PI*2; const l = new THREE.Mesh(new THREE.SphereGeometry(.13,8,6), basic(cols[i%3])); l.position.set(Math.cos(a)*2.75,-.12,Math.sin(a)*2.75); ring.add(l); }
@@ -349,10 +366,10 @@ sunL.position.set(-18,35,20); sunL.castShadow = true; sunL.shadow.mapSize.set(10
 Object.assign(sunL.shadow.camera, {left:-28,right:28,top:28,bottom:-28,near:1,far:100}); sunL.shadow.bias = -.0008;
 scene.add(sunL);
 
-const ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), toon(0x2b3352)); ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
-const road = new THREE.Mesh(new THREE.RingGeometry(15,18.5,64), toon(0x1c2140)); road.rotation.x = -Math.PI/2; road.position.y = .02; road.receiveShadow = true; scene.add(road);
-const plaza = new THREE.Mesh(new THREE.CylinderGeometry(15,15,.12,64), toon(0xb8a6c9)); plaza.position.y = .06; plaza.receiveShadow = true; scene.add(plaza);
-const plaza2 = new THREE.Mesh(new THREE.CylinderGeometry(7.5,7.5,.14,64), toon(0xe3d6ef)); plaza2.position.y = .07; plaza2.receiveShadow = true; scene.add(plaza2);
+const ground = new THREE.Mesh(new THREE.PlaneGeometry(400,400), matte(0x2b3352)); ground.rotation.x = -Math.PI/2; ground.receiveShadow = true; scene.add(ground);
+const road = new THREE.Mesh(new THREE.RingGeometry(15,18.5,64), matte(0x1c2140,{roughness:.6})); road.rotation.x = -Math.PI/2; road.position.y = .02; road.receiveShadow = true; scene.add(road);
+const plaza = new THREE.Mesh(new THREE.CylinderGeometry(15,15,.12,64), toon(0x9d8cb3,{clearcoat:.5,roughness:.35})); plaza.position.y = .06; plaza.receiveShadow = true; scene.add(plaza);
+const plaza2 = new THREE.Mesh(new THREE.CylinderGeometry(7.5,7.5,.14,64), toon(0xc9b9dc,{clearcoat:.6,roughness:.3})); plaza2.position.y = .07; plaza2.receiveShadow = true; scene.add(plaza2);
 {
   const s = new THREE.Shape();
   for(let i=0;i<10;i++){ const a = i/10*Math.PI*2 + Math.PI/2, r = i%2 ? 2.1 : 5; i ? s.lineTo(Math.cos(a)*r, Math.sin(a)*r) : s.moveTo(Math.cos(a)*r, Math.sin(a)*r); }
@@ -374,8 +391,8 @@ for(let i=0;i<220 && buildings.length<48;i++){
   if(buildings.some(b => Math.hypot(b.x-x, b.z-z) < (w+b.w)/2+1.2)) continue;
   const tex = winTex[buildings.length%4].clone(); tex.repeat.set(Math.round(w/2), Math.round(h/2.5)); tex.needsUpdate = true;
   const col = palette[Math.floor(rnd()*palette.length)];
-  const mat = new THREE.MeshToonMaterial({color:col, gradientMap:grad, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1});
-  const roof = toon(new THREE.Color(col).multiplyScalar(.7));
+  const mat = new THREE.MeshStandardMaterial({color:col, roughness:.55, metalness:.1, emissive:0xffffff, emissiveMap:tex, emissiveIntensity:1});
+  const roof = matte(new THREE.Color(col).multiplyScalar(.7));
   const m = edges(new THREE.Mesh(new THREE.BoxGeometry(w,h,d), [mat,mat,roof,roof,mat,mat]));
   m.position.set(x,h/2,z); m.rotation.y = Math.round(rnd()*3)*Math.PI/2 + (rnd()-.5)*.3; m.castShadow = m.receiveShadow = true; scene.add(m);
   if(rnd()<.35){ const ant = new THREE.Mesh(new THREE.CylinderGeometry(.06,.06,2.5,6), toon(0x9aa0c0)); ant.position.set(x,h+1.25,z); scene.add(ant); const blink = new THREE.Mesh(new THREE.SphereGeometry(.14,8,6), basic(0xff4d6d)); blink.position.set(x,h+2.5,z); scene.add(blink); }
@@ -388,12 +405,12 @@ for(let i=0;i<14;i++){
   if((z > 7 && Math.abs(x) < 8) || (z < -8 && Math.abs(x) < 4)) continue;
   if(i%2){
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(.08,.1,3.4,8), toon(0x3a3f63)); pole.position.set(x,1.7,z); pole.castShadow = true; scene.add(pole);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(.28,12,10), lampMat); bulb.position.set(x,3.5,z); scene.add(bulb);
+    const bulb = new THREE.Mesh(new THREE.SphereGeometry(.28,40,28), lampMat); bulb.position.set(x,3.5,z); scene.add(bulb);
     const g = glowSprite(0xffe08a,2.4,.8); g.position.copy(bulb.position); scene.add(g); lamps.push(g);
   } else {
     part(new THREE.CylinderGeometry(.18,.24,1.2,8), toon(0x6b4a33), scene, [x,.6,z]);
-    part(new THREE.SphereGeometry(1.1,14,10), toon(0x3fae7a), scene, [x,2.0,z]);
-    part(new THREE.SphereGeometry(.75,12,10), toon(0x55c98e), scene, [x,2.8,z]);
+    part(new THREE.SphereGeometry(1.1,40,28), toon(0x3fae7a,{roughness:.7,clearcoat:0}), scene, [x,2.0,z]);
+    part(new THREE.SphereGeometry(.75,40,28), toon(0x55c98e,{roughness:.7,clearcoat:0}), scene, [x,2.8,z]);
   }
 }
 // tower of light
@@ -406,7 +423,7 @@ for(let i=0;i<14;i++){
 }
 const CRYSTAL_HOME = V(0,10.1,-11);
 const crystal = new THREE.Group();
-const crystalMat = new THREE.MeshToonMaterial({color:0xfff3b0, gradientMap:grad, emissive:0xffc93c, emissiveIntensity:1.2});
+const crystalMat = new THREE.MeshPhysicalMaterial({color:0xfff3b0, roughness:.05, metalness:.1, clearcoat:1, emissive:0xffc93c, emissiveIntensity:1.2});
 const crystalMesh = edges(new THREE.Mesh(new THREE.OctahedronGeometry(.8,0), crystalMat)); crystalMesh.scale.set(1,1.6,1); crystal.add(crystalMesh);
 const halo = glowSprite(0xffd86b, 6, .9); crystal.add(halo);
 const cLight = new THREE.PointLight(0xffd98a, 150, 55, 2); crystal.add(cLight);
@@ -415,9 +432,9 @@ scene.add(crystal);
 // sky
 const starGeo = new THREE.BufferGeometry(); { const sp = []; for(let i=0;i<700;i++){ const th = rnd()*Math.PI*2, ph = rnd()*Math.PI*.45, R = 170; sp.push(R*Math.sin(ph)*Math.cos(th), R*Math.cos(ph)+5, R*Math.sin(ph)*Math.sin(th)); } starGeo.setAttribute('position', new THREE.Float32BufferAttribute(sp,3)); }
 const stars = new THREE.Points(starGeo, new THREE.PointsMaterial({color:0xffffff, size:1.1, transparent:true, fog:false})); scene.add(stars);
-const moon = new THREE.Mesh(new THREE.SphereGeometry(7,24,16), basic(0xfff4cf,{fog:false})); moon.position.set(-50,70,-140); scene.add(moon);
+const moon = new THREE.Mesh(new THREE.SphereGeometry(7,40,28), basic(0xfff4cf,{fog:false})); moon.position.set(-50,70,-140); scene.add(moon);
 const moonGlow = glowSprite(0xfff4cf, 40, .35); moonGlow.material.fog = false; moon.add(moonGlow);
-const sun = new THREE.Mesh(new THREE.SphereGeometry(9,24,16), basic(0xffd27a,{fog:false})); scene.add(sun);
+const sun = new THREE.Mesh(new THREE.SphereGeometry(9,40,28), basic(0xffd27a,{fog:false})); scene.add(sun);
 const sunGlow = glowSprite(0xffc46b, 60, .6); sunGlow.material.fog = false; sun.add(sunGlow);
 
 /* ================= effects ================= */
@@ -471,11 +488,12 @@ function applyEnv(t){
   tmpC.lerp(C_RED, Env.red*(1-d));
   scene.background.copy(tmpC); scene.fog.color.copy(tmpC);
   const lit = Math.max(Env.city, d);
-  hemi.intensity = (.55 + d*1.3) * (.65 + .35*lit);
+  hemi.intensity = (.35 + d*1.0) * (.65 + .35*lit);
   sunL.intensity = .9 + d*2.1; sunL.color.copy(C_MOON).lerp(C_SUN, d);
+  scene.environmentIntensity = .12 + d*.5; bloom.strength = .5 - d*.3;
   stars.material.opacity = clamp(1 - d*1.6); moon.visible = d < .7;
   sun.position.set(40, lerp(-20, 55, d), -150); sun.visible = d > .05;
-  for(const b of buildings) b.mat.emissiveIntensity = (Env.city > b.order ? 1 : 0) * (1 - d*.75);
+  for(const b of buildings) b.mat.emissiveIntensity = (Env.city > b.order ? .75 : 0) * (1 - d*.8);
   const lampOn = Env.city > .5 && d < .8;
   lampMat.color.setHex(lampOn ? 0xffe9a8 : 0x3a3a52); for(const l of lamps) l.visible = lampOn;
   cLight.intensity = 150*Env.crystal*(.85 + .15*Math.sin(t*3));
@@ -974,7 +992,7 @@ function frame(now){
   const sk = reduceMotion ? 0 : shake; shake *= Math.pow(.03, dt);
   camera.position.x += (Math.random()-.5)*sk; camera.position.y += (Math.random()-.5)*sk;
   camera.lookAt(look);
-  renderer.render(scene, camera);
+  composer.render();
 }
 toMenu();
 $('msg').hidden = true;
