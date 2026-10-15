@@ -503,6 +503,12 @@ const announcer = { name: 'Announcer', color: '#ffd23f', voice: { gender: 'm', p
    Audio: music + sound effects with Web Audio
    --------------------------------------------------------------------- */
 let AC = null, master = null, engine = null;
+// ?record=1 : frame-by-frame rendering used by the MP4 exporter (tools/render.js)
+const RECORD = params.get('record') === '1';
+const audioLog = [], voiceLog = [];
+let replayAt = null;
+const now = () => replayAt ?? AC.currentTime;
+function logA(name, args) { if (RECORD && replayAt === null) audioLog.push({ t: T, name, args: [...args] }); }
 function initAudio() {
   try { AC = new (window.AudioContext || window.webkitAudioContext)(); master = AC.createGain(); master.gain.value = 0.45; master.connect(AC.destination); } catch (e) { AC = null; }
 }
@@ -527,8 +533,9 @@ function noise(when, dur, vol = 0.2, freq = 3000, type = 'highpass', q = 1) {
 }
 const mtof = m => 440 * Math.pow(2, (m - 69) / 12);
 function playTheme(beats = 32) {
+  logA('playTheme', arguments);
   if (!AC) return;
-  const b = 0.4, t0 = AC.currentTime + 0.1;
+  const b = 0.4, t0 = now() + 0.1;
   // melody: [midi, beats]
   const mel = [[67, 1], [72, 1], [76, 1], [79, 1], [81, 1], [79, .5], [76, .5], [72, 2], [74, 1], [76, 1], [77, 1], [74, 1], [79, 3], [0, 1],
     [76, 1], [77, 1], [79, 1], [76, 1], [84, 1], [83, .5], [81, .5], [79, 2], [77, 1], [81, 1], [79, 1], [77, 1], [76, .5], [74, .5], [72, 3]];
@@ -544,10 +551,11 @@ function playTheme(beats = 32) {
   for (const [i, ch] of [[7, [60, 64, 67]], [15, [62, 67, 71]], [23, [64, 67, 72]], [31, [60, 64, 67, 72]]])
     if (i < beats) for (const m of ch) tone(mtof(m), t0 + i * b, i === beats - 1 ? 1.2 : 0.3, 'sawtooth', 0.06, 2000);
 }
-function sting() { if (!AC) return; const t = AC.currentTime + 0.02; [[67, 0], [72, .12], [76, .24]].forEach(([m, d]) => tone(mtof(m), t + d, 0.4, 'sawtooth', 0.08, 2500)); }
+function sting() { logA('sting', arguments); if (!AC) return; const t = now() + 0.02; [[67, 0], [72, .12], [76, .24]].forEach(([m, d]) => tone(mtof(m), t + d, 0.4, 'sawtooth', 0.08, 2500)); }
 function sfx(name) {
+  logA('sfx', arguments);
   if (!AC) return;
-  const t = AC.currentTime + 0.01;
+  const t = now() + 0.01;
   switch (name) {
     case 'ding': tone(1760, t, 0.6, 'sine', 0.18, 8000); tone(2637, t, 0.5, 'sine', 0.08, 8000); break;
     case 'bell': tone(1318, t, 0.35, 'sine', 0.15, 8000); tone(1046, t + 0.3, 0.6, 'sine', 0.15, 8000); break;
@@ -563,14 +571,15 @@ function sfx(name) {
   }
 }
 function engineOn() {
+  logA('engineOn', arguments);
   if (!AC || engine) return;
   const o = AC.createOscillator(), o2 = AC.createOscillator(), g = AC.createGain(), fl = AC.createBiquadFilter();
   o.type = 'sawtooth'; o.frequency.value = 48; o2.type = 'square'; o2.frequency.value = 24.5; fl.type = 'lowpass'; fl.frequency.value = 260;
-  g.gain.value = 0.0; g.gain.linearRampToValueAtTime(0.13, AC.currentTime + 0.6);
-  o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(master); o.start(); o2.start();
+  g.gain.setValueAtTime(0, now()); g.gain.linearRampToValueAtTime(0.13, now() + 0.6);
+  o.connect(fl); o2.connect(fl); fl.connect(g); g.connect(master); o.start(now()); o2.start(now());
   engine = { o, o2, g };
 }
-function engineOff() { if (!engine || !AC) return; const e = engine; engine = null; e.g.gain.linearRampToValueAtTime(0, AC.currentTime + 0.5); e.o.stop(AC.currentTime + 0.6); e.o2.stop(AC.currentTime + 0.6); }
+function engineOff() { logA('engineOff', arguments); if (!engine || !AC) return; const e = engine; engine = null; e.g.gain.setValueAtTime(0.13, now()); e.g.gain.linearRampToValueAtTime(0, now() + 0.5); e.o.stop(now() + 0.6); e.o2.stop(now() + 0.6); }
 
 /* ---------------------------------------------------------------------
    Voices (Web Speech API) + subtitles
@@ -602,6 +611,11 @@ function say(c, text, opts = {}) {
     sub = { c, text };
     const rate = (opts.rate || c.voice.rate);
     const est = text.split(/\s+/).length * 0.36 / rate + 0.7;
+    if (RECORD) {   // exporter supplies the real length of each pre-rendered voice line
+      const d = (window.VOICE_DUR || {})[c.name + '|' + text] ?? est;
+      voiceLog.push({ t: T, who: c.name, text, rate: opts.rate || null, pitch: opts.pitch || null, dur: d });
+      wait(d + 0.15).then(finish); return;
+    }
     if (!voiceOn || !synth || SPEED !== 1) { wait(est).then(finish); return; }
     const u = new SpeechSynthesisUtterance(text);
     const vc = pickVoice(c.voice); if (vc) u.voice = vc;
@@ -910,7 +924,7 @@ function drawTitleFront(s) {
   const pop = Math.min(1, s.logo);
   if (pop > 0) {
     ctx.save(); ctx.translate(640, 170); const k = EASE.back(pop); ctx.scale(k, k); ctx.rotate(Math.sin(T * 2) * 0.02);
-    otext('The Buckleys', 0, 0, 88, '#ffd23f', 'Lobster', 'center', 11);
+    otext('The Buckleys', 0, 0, 72, '#ffd23f', 'Lobster', 'center', 10);
     ctx.restore();
   }
   if (s.sub > 0) { ctx.globalAlpha = s.sub; otext(s.subText, 640, 270, 23, '#ffffff', 'Luckiest Guy', 'center', 5); ctx.globalAlpha = 1; }
@@ -1034,7 +1048,7 @@ function render() {
   ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeRect(0, TOP, SW, SCN_H);
   if (scene.overlay) scene.overlay(scene);
   if (subsOn && sub) drawSub(sub);
-  if (started && !finished) {
+  if (started && !finished && !RECORD) {
     ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(0, 0, SW, 7);
     ctx.fillStyle = '#ff3b3b'; ctx.fillRect(0, 0, SW * clamp(T / LIMIT, 0, 1), 7);
     ctx.font = 'bold 16px Arial'; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(255,255,255,.85)';
@@ -1281,6 +1295,7 @@ async function runShort(n) {
    --------------------------------------------------------------------- */
 let last = performance.now();
 function frame(now) {
+  if (RECORD) return;
   const dt = Math.min(0.05, (now - last) / 1000); last = now;
   if (started && !paused) update(dt * SPEED);
   render();
@@ -1323,6 +1338,27 @@ bSubs.onclick = () => { subsOn = !subsOn; bSubs.classList.toggle('off', !subsOn)
 document.getElementById('bFull').onclick = () => { const w = document.getElementById('wrap'); if (document.fullscreenElement) document.exitFullscreen(); else if (w.requestFullscreen) w.requestFullscreen(); };
 document.addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); started ? bPause.onclick() : start(); } });
 if (params.get('autoplay') === '1') start();
+
+/* exporter hooks */
+if (RECORD) {
+  window.recStart = ep => { started = true; overlay.style.display = 'none'; runShort(ep); };
+  window.recStep = (dt, draw) => { update(dt); if (draw) render(); return { T, finished }; };
+  window.recFrame = q => cv.toDataURL('image/jpeg', q);
+  window.recLogs = () => ({ audioLog, voiceLog });
+  window.recAudio = async dur => {   // replay every logged music/sfx call into an offline mix
+    const sr = 44100, oc = new OfflineAudioContext(1, Math.ceil(sr * dur), sr);
+    AC = oc; master = oc.createGain(); master.gain.value = 0.45; master.connect(oc.destination); noiseBuf = null; engine = null;
+    const fns = { playTheme, sting, sfx, engineOn, engineOff };
+    for (const e of audioLog) { replayAt = e.t; fns[e.name](...e.args); }
+    replayAt = null;
+    const d = (await oc.startRendering()).getChannelData(0);
+    const out = new Int16Array(d.length);
+    for (let i = 0; i < d.length; i++) out[i] = clamp(d[i], -1, 1) * 32767;
+    let bin = ''; const u8 = new Uint8Array(out.buffer);
+    for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+    return btoa(bin);
+  };
+}
 </script>
 </body>
 </html>

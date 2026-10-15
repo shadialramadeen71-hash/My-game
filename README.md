@@ -17,6 +17,20 @@ and hard-capped at **40 seconds** (red progress bar at the top). The camera auto
 
 Open a specific short directly with `cartoon/index.html?ep=2`.
 
+### ⬇️ Ready-made videos (MP4, 1080×1920, 30 fps, with voices)
+
+- [Short #1 — The Ticket](cartoon/videos/the-buckleys-short-1-the-ticket.mp4)
+- [Short #2 — Millionaire Town](cartoon/videos/the-buckleys-short-2-millionaire-town.mp4)
+- [Short #3 — Half Off](cartoon/videos/the-buckleys-short-3-half-off.mp4)
+
+The videos are rendered by `cartoon/tools/render.js` (frame-by-frame capture with Playwright, voices by
+[Piper TTS](https://github.com/rhasspy/piper) via `cartoon/tools/voices.py`, mixed with ffmpeg):
+
+```
+pip install piper-tts      # plus the Piper voice models listed in voices.py
+node cartoon/tools/render.js <piper-models-dir> cartoon/videos
+```
+
 - **Characters** (all original): Gary (the dad), Donna (the mom), Tyler (the son),
   Mr. Whiskers (the sarcastic cat) and Brenda (the bored store clerk).
 - **Animation**: jointed skeletons (hips, knees, ankles, shoulders, elbows, hands),
