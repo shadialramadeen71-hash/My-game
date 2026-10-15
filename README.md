@@ -6,7 +6,8 @@ An adult-animation-style cartoon episode (thick ink outlines, flat colours, big-
 suburban dad, talking pet) drawn, animated, scored and voiced **entirely with code**.
 
 Open [`cartoon/index.html`](cartoon/index.html) in a browser and press **▶ Watch**
-(or pick a short). Every short is hard-capped at **40 seconds** (red progress bar at the top).
+(or pick a short). Every short is **vertical 9:16 (1080×1920)** — ready for TikTok / YouTube Shorts / Reels —
+and hard-capped at **40 seconds** (red progress bar at the top). The camera automatically follows whoever is talking.
 
 | # | Short | Story |
 |---|-------|-------|

@@ -10,12 +10,12 @@
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { background: #0b0b12; color: #fff; font-family: Arial, Helvetica, sans-serif; }
   body { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 10px 0; }
-  #wrap { position: relative; width: min(100vw, calc((100vh - 70px) * 16 / 9)); aspect-ratio: 16 / 9; background: #000; box-shadow: 0 0 40px rgba(0,0,0,.8); }
+  #wrap { position: relative; width: min(100vw, calc((100vh - 70px) * 9 / 16)); aspect-ratio: 9 / 16; background: #000; box-shadow: 0 0 40px rgba(0,0,0,.8); }
   #wrap:fullscreen { width: 100vw; height: 100vh; aspect-ratio: auto; }
   canvas { display: block; width: 100%; height: 100%; object-fit: contain; }
   #overlay { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
     background: radial-gradient(circle at 50% 40%, #2d5fa8, #0d1b3a); cursor: pointer; text-align: center; padding: 16px; }
-  #overlay h1 { font-family: 'Lobster', Georgia, serif; font-size: clamp(36px, 9vw, 96px); color: #ffd23f; -webkit-text-stroke: 2px #111; text-shadow: 4px 4px 0 #111; }
+  #overlay h1 { font-family: 'Lobster', Georgia, serif; font-size: clamp(34px, 12vw, 80px); color: #ffd23f; -webkit-text-stroke: 2px #111; text-shadow: 4px 4px 0 #111; }
   #overlay p { font-size: clamp(13px, 2.2vw, 20px); opacity: .9; }
   #play { font-family: 'Luckiest Guy', Arial, sans-serif; font-size: clamp(18px, 3.5vw, 32px); background: #e8743b; color: #fff; border: 4px solid #111; border-radius: 16px; padding: 12px 34px; cursor: pointer; box-shadow: 0 6px 0 #111; letter-spacing: 1px; }
   #play:active { transform: translateY(4px); box-shadow: 0 2px 0 #111; }
@@ -28,7 +28,7 @@
 </head>
 <body>
 <div id="wrap">
-  <canvas id="cv" width="1920" height="1080"></canvas>
+  <canvas id="cv" width="1080" height="1920"></canvas>
   <div id="overlay">
     <h1>The Buckleys</h1>
     <p>Shorts · كل حلقة أقل من 40 ثانية<br>مسلسل كرتوني بالكامل مرسوم بالكود · حوار صوتي بالإنجليزية</p>
@@ -59,7 +59,10 @@
 
 const cv = document.getElementById('cv');
 const ctx = cv.getContext('2d');
-const W = 1280, H = 720;              // logical stage size
+const W = 1280, H = 720;              // world (stage) size
+// vertical 9:16 screen: title band on top, the scene, subtitles at the bottom
+const SW = 720, SH = 1280, VIEW_W = 500;          // VIEW_W = world width visible at zoom 1
+const SCALE = SW / VIEW_W, TOP = 118, SCN_H = H * SCALE;
 const PI = Math.PI, TAU = PI * 2;
 const params = new URLSearchParams(location.search);
 const SPEED = parseFloat(params.get('speed') || '1');
@@ -627,7 +630,27 @@ async function walk(c, x, speed = 150, y = null) {
   c.state = 'idle';
 }
 const cam = { x: 640, y: 360, z: 1 };
-function setCam(x, y, z) { cam.x = x; cam.y = y; cam.z = z; }
+function setCam(x, y, z) { cam.x = x; cam.y = y; cam.z = z; cam.auto = (z === 1 && y === 360); cam.snap = true; }
+function camTarget() {
+  const vis = [...scene.chars.filter(c => c.visible), ...(scene.car ? [scene.car] : [])];
+  const xOf = o => o.occ ? o.x : o.x;
+  let sp = sub && sub.c && sub.c.b ? sub.c : null;
+  if (sp && scene.car && scene.car.occ.some(o => o.c === sp)) sp = scene.car;
+  if (sp && !vis.includes(sp)) sp = null;
+  if (!sp) return vis.length ? vis.reduce((a, o) => a + xOf(o), 0) / vis.length : cam.x;
+  let best = null, bd = 400;
+  for (const o of vis) if (o !== sp) { const d = Math.abs(xOf(o) - xOf(sp)); if (d < bd) { bd = d; best = o; } }
+  return best ? (xOf(sp) + xOf(best)) / 2 : xOf(sp);
+}
+function updateCam(dt) {
+  if (cam.auto) {
+    const tx = camTarget();
+    cam.x = cam.snap ? tx : lerp(cam.x, tx, clamp(dt * 2.5, 0, 1));
+  }
+  cam.snap = false;
+  const half = VIEW_W / 2 / cam.z;
+  cam.x = clamp(cam.x, half, W - half);
+}
 const camTo = (x, y, z, d = 0.6) => tween(cam, { x, y, z }, d);
 const fx = { fade: 1, wipe: 0, iris: -1, irisX: 640, irisY: 360, flash: 0 };
 const fadeIn = (d = 0.7) => tween(fx, { fade: 0 }, d);
@@ -886,14 +909,14 @@ function drawTitle(s) {
 function drawTitleFront(s) {
   const pop = Math.min(1, s.logo);
   if (pop > 0) {
-    ctx.save(); ctx.translate(640, 190); const k = EASE.back(pop); ctx.scale(k, k); ctx.rotate(Math.sin(T * 2) * 0.02);
-    otext('The Buckleys', 0, 0, 150, '#ffd23f', 'Lobster', 'center', 16);
+    ctx.save(); ctx.translate(640, 170); const k = EASE.back(pop); ctx.scale(k, k); ctx.rotate(Math.sin(T * 2) * 0.02);
+    otext('The Buckleys', 0, 0, 88, '#ffd23f', 'Lobster', 'center', 11);
     ctx.restore();
   }
-  if (s.sub > 0) { ctx.globalAlpha = s.sub; otext(s.subText, 640, 320, 38, '#ffffff', 'Luckiest Guy', 'center', 7); ctx.globalAlpha = 1; }
+  if (s.sub > 0) { ctx.globalAlpha = s.sub; otext(s.subText, 640, 270, 23, '#ffffff', 'Luckiest Guy', 'center', 5); ctx.globalAlpha = 1; }
   for (const sd of [-1, 1]) {
-    const x0 = sd < 0 ? 0 : W;
-    ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0 - sd * 150, 0); ctx.quadraticCurveTo(x0 - sd * 90, 360, x0 - sd * 130, 720); ctx.lineTo(x0, 720); ctx.closePath(); fs('#a8202a');
+    const x0 = sd < 0 ? 390 : 890;
+    ctx.beginPath(); ctx.moveTo(x0, 0); ctx.lineTo(x0 - sd * 50, 0); ctx.quadraticCurveTo(x0 - sd * 30, 360, x0 - sd * 44, 720); ctx.lineTo(x0, 720); ctx.closePath(); fs('#a8202a');
   }
   rr(-10, -10, W + 20, 50, 0); fs('#a8202a');
 }
@@ -938,7 +961,7 @@ function drawCarFront(car) {
    Scene management & rendering
    --------------------------------------------------------------------- */
 let scene = { bg: () => { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H); }, chars: [] };
-function setScene(s) { if (!s.chars) s.chars = []; scene = s; }
+function setScene(s) { if (!s.chars) s.chars = []; scene = s; setCam(640, 360, 1); }   // camera follows the action by default
 
 function update(dt) {
   T += dt;
@@ -964,6 +987,7 @@ function update(dt) {
     for (const p of scene.puffs) { p.y += p.vy * dt; p.x += p.vx * dt; p.r += dt * 14; p.a -= dt * 0.18; }
     scene.puffs = scene.puffs.filter(p => p.a > 0);
   }
+  updateCam(dt);
   const car = scene.car;
   if (car) {
     car.wheel += car.speed * dt / 34;
@@ -977,11 +1001,17 @@ function update(dt) {
 }
 
 function render() {
-  const k = cv.width / W;
+  const k = cv.width / SW;
   ctx.setTransform(k, 0, 0, k, 0, 0);
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W, H);
+  const bgG = ctx.createLinearGradient(0, 0, 0, SH); bgG.addColorStop(0, '#16224a'); bgG.addColorStop(1, '#0b0f20');
+  ctx.fillStyle = bgG; ctx.fillRect(0, 0, SW, SH);
+  // top band: show logo
+  otext('The Buckleys', SW / 2, 58, 52, '#ffd23f', 'Lobster', 'center', 8);
+  if (started && SHORTS[curShort]) { ctx.font = "16px 'Luckiest Guy', Arial"; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#9fb6e8'; ctx.fillText(`SHORT #${curShort + 1} · ${SHORTS[curShort].name.toUpperCase()}`, SW / 2, 100); }
   ctx.save();
-  ctx.translate(W / 2, H / 2); ctx.scale(cam.z, cam.z); ctx.translate(-cam.x, -cam.y);
+  ctx.beginPath(); ctx.rect(0, TOP, SW, SCN_H); ctx.clip();
+  ctx.fillStyle = '#000'; ctx.fillRect(0, TOP, SW, SCN_H);
+  ctx.translate(SW / 2, TOP + SCN_H / 2); ctx.scale(SCALE * cam.z, SCALE * cam.z); ctx.translate(-cam.x, -cam.y);
   scene.bg(scene);
   const sorted = [...scene.chars].sort((a, b) => (a.z - b.z) || (a.y - b.y));
   if (scene.car) { drawCarBack(scene.car); for (const o of scene.car.occ) drawChar(o.c); drawCarFront(scene.car); }
@@ -991,25 +1021,28 @@ function render() {
   if (scene.fg) scene.fg(scene);
   ctx.restore();
 
-  // screen-space overlays
-  if (fx.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${fx.flash})`; ctx.fillRect(0, 0, W, H); }
-  if (fx.wipe > 0) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, W * fx.wipe, H); }
+  // scene-frame overlays (transitions)
+  ctx.save(); ctx.beginPath(); ctx.rect(0, TOP, SW, SCN_H); ctx.clip();
+  if (fx.flash > 0) { ctx.fillStyle = `rgba(255,255,255,${fx.flash})`; ctx.fillRect(0, TOP, SW, SCN_H); }
+  if (fx.wipe > 0) { ctx.fillStyle = '#000'; ctx.fillRect(0, TOP, SW * fx.wipe, SCN_H); }
   if (fx.iris >= 0) {
-    ctx.beginPath(); ctx.rect(0, 0, W, H); ctx.arc(fx.irisX, fx.irisY, Math.max(0, fx.iris), 0, TAU, true);
+    ctx.beginPath(); ctx.rect(0, TOP, SW, SCN_H); ctx.arc(SW / 2, TOP + SCN_H * 0.42, Math.max(0, fx.iris), 0, TAU, true);
     ctx.fillStyle = '#000'; ctx.fill('evenodd');
   }
-  if (fx.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fx.fade})`; ctx.fillRect(0, 0, W, H); }
+  if (fx.fade > 0) { ctx.fillStyle = `rgba(0,0,0,${fx.fade})`; ctx.fillRect(0, TOP, SW, SCN_H); }
+  ctx.restore();
+  ctx.lineWidth = 4; ctx.strokeStyle = '#000'; ctx.strokeRect(0, TOP, SW, SCN_H);
   if (scene.overlay) scene.overlay(scene);
   if (subsOn && sub) drawSub(sub);
   if (started && !finished) {
-    ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(0, 0, W, 6);
-    ctx.fillStyle = '#ff3b3b'; ctx.fillRect(0, 0, W * clamp(T / LIMIT, 0, 1), 6);
-    ctx.font = 'bold 18px Arial'; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(255,255,255,.85)';
-    ctx.fillText(`0:${String(Math.min(LIMIT, Math.floor(T))).padStart(2, '0')} / 0:${LIMIT}`, W - 14, 14);
+    ctx.fillStyle = 'rgba(255,255,255,.25)'; ctx.fillRect(0, 0, SW, 7);
+    ctx.fillStyle = '#ff3b3b'; ctx.fillRect(0, 0, SW * clamp(T / LIMIT, 0, 1), 7);
+    ctx.font = 'bold 16px Arial'; ctx.textAlign = 'right'; ctx.textBaseline = 'top'; ctx.fillStyle = 'rgba(255,255,255,.85)';
+    ctx.fillText(`0:${String(Math.min(LIMIT, Math.floor(T))).padStart(2, '0')} / 0:${LIMIT}`, SW - 12, 16);
   }
   if (paused && started) {
-    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, W, H);
-    otext('PAUSED', 640, 360, 80, '#ffd23f');
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, 0, SW, SH);
+    otext('PAUSED', SW / 2, SH / 2, 80, '#ffd23f');
   }
 }
 function wrapText(text, maxW) {
@@ -1018,14 +1051,14 @@ function wrapText(text, maxW) {
   if (cur) lines.push(cur); return lines;
 }
 function drawSub(s) {
-  ctx.font = "600 26px Arial, Helvetica, sans-serif";
-  const lines = wrapText(s.text, 980);
-  const h = 22 + lines.length * 34 + 30, y = H - h - 18;
-  ctx.fillStyle = 'rgba(0,0,0,.66)'; rr(640 - 520, y, 1040, h, 14); ctx.fill();
+  ctx.font = "800 30px Arial, Helvetica, sans-serif";
+  const lines = wrapText(s.text, 620);
+  const h = 26 + lines.length * 38 + 30, y = SH - h - 40;
+  ctx.fillStyle = 'rgba(0,0,0,.72)'; rr(20, y, SW - 40, h, 18); ctx.fill();
   ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.font = "bold 20px Arial"; ctx.fillStyle = s.c.color; ctx.fillText(s.c.name.toUpperCase(), 640, y + 10);
-  ctx.font = "600 26px Arial, Helvetica, sans-serif"; ctx.fillStyle = '#fff';
-  lines.forEach((l, i) => ctx.fillText(l, 640, y + 38 + i * 34));
+  ctx.font = "bold 20px Arial"; ctx.fillStyle = s.c.color; ctx.fillText(s.c.name.toUpperCase(), SW / 2, y + 12);
+  ctx.font = "800 30px Arial, Helvetica, sans-serif"; ctx.fillStyle = '#fff';
+  lines.forEach((l, i) => ctx.fillText(l, SW / 2, y + 42 + i * 38));
 }
 
 /* ---------------------------------------------------------------------
@@ -1048,8 +1081,8 @@ async function eatOnce(c, s) {
 async function intro(n, name) {
   const title = { bg: drawTitle, fg: drawTitleFront, logo: 0, sub: 0, subText: `Short #${n}: "${name}"` };
   title.chars = ['tyler', 'donna', 'gary', 'whiskers', 'brenda'].map(C);
-  title.chars.forEach((c, i) => Object.assign(c, { x: 250 + i * 195, y: 662, pose: 'kick', scale: 0.9, expr: 'happy', lookX: 0 }));
-  setScene(title); setCam(640, 360, 1);
+  title.chars.forEach((c, i) => Object.assign(c, { x: 640 + (i - 2) * 92, y: 662 - (i % 2) * 6, pose: 'kick', scale: 0.62, expr: 'happy', lookX: 0 }));
+  setScene(title); setCam(640, 360, 1); cam.auto = false;
   playTheme(8);
   await fadeIn(0.25);
   await together(tween(title, { logo: 1 }, 0.5, 'linear'), tween(title, { sub: 1 }, 0.6));
@@ -1150,7 +1183,7 @@ const SHORTS = [
     Object.assign(gD, { pose: 'sit', noGest: true }); Object.assign(tD, { pose: 'sit', expr: 'happy', noGest: true });
     car2.occ = [{ c: gD, dx: 46, dy: -12, s: 0.82 }, { c: tD, dx: -78, dy: -12, s: 0.82 }];
     drive.car = car2;
-    setScene(drive); setCam(640, 470, 1.3);
+    setScene(drive); setCam(640, 360, 1);
     await fadeIn(0.3);
     await say(tD, 'Dad, what are you gonna buy first?');
     gD.expr = 'happy';
@@ -1202,9 +1235,9 @@ const SHORTS = [
     setCam(640, 360, 1);
     gN.expr = 'happy'; gN.lookX = 0; dN.expr = 'happy';
     await say(gN, 'Hoo hoo hoo hoo!', { pitch: 0.8, rate: 1.15 });
-    fx.irisX = 640; fx.irisY = 360; fx.iris = 900;
+    fx.iris = 900;
     setCam(600, 470, 1.6);
-    await tween(fx, { iris: 110 }, 0.6);
+    await tween(fx, { iris: 150 }, 0.6);
     await wait(0.3);
     await tween(fx, { iris: 0 }, 0.3, 'in');
   } }
@@ -1221,11 +1254,12 @@ function showEnd() {
   Object.assign(fx, { fade: 0, wipe: 0, iris: -1, flash: 0 });
   const last = curShort === SHORTS.length - 1;
   setScene({ bg: drawTitle, endCard: true, overlay: () => {
-    ctx.fillStyle = 'rgba(0,0,0,.35)'; ctx.fillRect(0, 0, W, H);
-    otext('The Buckleys', 640, 230, 110, '#ffd23f', 'Lobster', 'center', 12);
-    otext(last ? 'THE END' : `Next: Short #${curShort + 2} "${SHORTS[curShort + 1].name}"`, 640, 380, last ? 70 : 44, '#ffffff');
-    ctx.fillStyle = '#ddd'; ctx.font = '22px Arial'; ctx.textAlign = 'center';
-    ctx.fillText(last ? 'Press ⟲ Replay or pick a short below' : 'Press ⏭ Next or click the screen', 640, 470);
+    ctx.fillStyle = 'rgba(0,0,0,.45)'; ctx.fillRect(0, TOP, SW, SCN_H);
+    otext('The Buckleys', SW / 2, 460, 96, '#ffd23f', 'Lobster', 'center', 12);
+    if (last) otext('THE END', SW / 2, 620, 70, '#ffffff');
+    else { otext('NEXT:', SW / 2, 590, 40, '#ffffff'); otext(`Short #${curShort + 2} "${SHORTS[curShort + 1].name}"`, SW / 2, 650, 34, '#ffffff', 'Luckiest Guy', 'center', 6); }
+    ctx.fillStyle = '#ddd'; ctx.font = '22px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(last ? 'Press ⟲ Replay or pick a short below' : 'Tap ⏭ Next or the screen', SW / 2, 740);
   } });
   setCam(640, 360, 1);
 }
